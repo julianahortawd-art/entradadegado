@@ -72,6 +72,36 @@
   .meta-panel div + div{ margin-top:6px; }
   .meta-panel b{ color:var(--cream); font-weight:600; }
 
+  .upload-card{
+    border:1px solid var(--border); background:var(--surface); border-radius:var(--radius);
+    padding:16px 20px; margin-bottom:22px;
+  }
+  .upload-head{ display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  .upload-title{ font-family:var(--font-display); font-size:17px; color:var(--cream); }
+  .toggle-upload{
+    font-family:var(--font-mono); font-size:11.5px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--gold); background:none; border:1px solid rgba(201,161,59,.4); border-radius:999px;
+    padding:6px 14px; cursor:pointer; transition:background .15s;
+  }
+  .toggle-upload:hover{ background:rgba(201,161,59,.08); }
+  .upload-body{ margin-top:16px; padding-top:16px; border-top:1px solid var(--border-soft); }
+  .upload-hint{ font-size:13px; color:var(--cream-dim); margin:0 0 14px; line-height:1.5; }
+  .upload-row{ display:flex; align-items:center; gap:12px; margin-bottom:10px; flex-wrap:wrap; }
+  .upload-row label{ width:120px; font-size:13px; color:var(--cream-dim); flex-shrink:0; }
+  .upload-row input[type="file"]{
+    flex:1; min-width:200px; font-size:12.5px; color:var(--cream-dim);
+  }
+  .btn-send{
+    font-family:var(--font-mono); font-size:11.5px; letter-spacing:.05em; text-transform:uppercase;
+    color:#0b0b0a; background:var(--gold); border:none; border-radius:8px;
+    padding:8px 16px; cursor:pointer; transition:opacity .15s;
+  }
+  .btn-send:hover{ opacity:.85; }
+  .btn-send:disabled{ opacity:.5; cursor:default; }
+  .upload-status{ font-size:12px; color:var(--cream-dim); }
+  .upload-status.ok{ color:var(--blue); }
+  .upload-status.erro{ color:var(--rust); }
+
   nav.tabs{
     display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid var(--border);
   }
@@ -179,6 +209,25 @@
       <div>Atualizado em: <b id="ref-gerado">—</b></div>
     </div>
   </header>
+
+  <div class="upload-card" id="upload-card">
+    <div class="upload-head">
+      <div>
+        <div class="eyebrow" style="margin-bottom:4px;">Atualização diária</div>
+        <div class="upload-title">Subir base do dia</div>
+      </div>
+      <button class="toggle-upload" id="toggle-upload">Mostrar</button>
+    </div>
+    <div class="upload-body" id="upload-body" hidden>
+      <p class="upload-hint">Suba a planilha exportada do sistema (com as abas "ENTRADA COMPRA" e "DESMAMA" dentro dela) — o conteúdo atual das duas bases é apagado e substituído pelo novo, igual no Estoque de Arrobas.</p>
+      <div class="upload-row">
+        <label>Planilha do dia</label>
+        <input type="file" id="file-planilha" accept=".xlsx,.xls">
+        <button class="btn-send" id="btn-enviar">Enviar</button>
+        <span class="upload-status" id="status-planilha"></span>
+      </div>
+    </div>
+  </div>
 
   <nav class="tabs">
     <button class="tab active" data-tab="entrada">Entrada Compra</button>
@@ -342,6 +391,63 @@
   });
 
   document.getElementById("search").addEventListener("input", render);
+
+  document.getElementById("toggle-upload").addEventListener("click", () => {
+    const body = document.getElementById("upload-body");
+    const btn = document.getElementById("toggle-upload");
+    const aberto = !body.hidden;
+    body.hidden = aberto;
+    btn.textContent = aberto ? "Mostrar" : "Ocultar";
+  });
+
+  function arquivoParaBase64(file){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(",")[1]);
+      reader.onerror = () => reject(new Error("Não foi possível ler o arquivo."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function enviarArquivo(){
+    const input = document.getElementById("file-planilha");
+    const statusEl = document.getElementById("status-planilha");
+    const botao = document.getElementById("btn-enviar");
+
+    if(!input.files || input.files.length === 0){
+      statusEl.textContent = "Escolha um arquivo primeiro.";
+      statusEl.className = "upload-status erro";
+      return;
+    }
+
+    const file = input.files[0];
+    botao.disabled = true;
+    statusEl.className = "upload-status";
+    statusEl.textContent = "Enviando " + file.name + "…";
+
+    try{
+      const conteudo = await arquivoParaBase64(file);
+      const resp = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" }, // evita preflight de CORS
+        body: JSON.stringify({ nomeArquivo: file.name, conteudo }),
+      });
+      const resultado = await resp.json();
+      if(!resultado.ok) throw new Error(resultado.erro || "Erro desconhecido no servidor.");
+
+      statusEl.className = "upload-status ok";
+      statusEl.textContent = `Entrada Compra: ${resultado.linhasEntradaCompra} linha(s) · Desmama: ${resultado.linhasDesmama} linha(s).`;
+      input.value = "";
+      await carregar(); // recarrega os relatórios com os dados novos
+    }catch(err){
+      statusEl.className = "upload-status erro";
+      statusEl.textContent = "Falhou: " + err.message;
+    }finally{
+      botao.disabled = false;
+    }
+  }
+
+  document.getElementById("btn-enviar").addEventListener("click", enviarArquivo);
 
   carregar();
 </script>
