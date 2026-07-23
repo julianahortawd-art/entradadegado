@@ -123,6 +123,8 @@
   }
   .search:focus{ outline:none; border-color:var(--gold); }
   .search::placeholder{ color:var(--muted); }
+  select.search{ cursor:pointer; }
+  select.search option{ background:var(--surface); color:var(--cream); }
 
   .legend{ display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--cream-dim); }
   .legend span{ display:inline-flex; align-items:center; gap:6px; }
@@ -235,7 +237,16 @@
   </nav>
 
   <div class="toolbar">
-    <input class="search" id="search" type="text" placeholder="Buscar fornecedor, compromisso ou contrato…">
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <input class="search" id="search" type="text" placeholder="Buscar fornecedor, compromisso ou contrato…">
+      <select class="search" id="filtro-status" style="min-width:170px;">
+        <option value="">Todos os status</option>
+        <option value="COMPLETO">Completo</option>
+        <option value="EM_ANDAMENTO">Em andamento</option>
+        <option value="NAO_INICIADO">Não iniciado</option>
+        <option value="SEM_INFO">Sem info de contrato</option>
+      </select>
+    </div>
     <div class="legend">
       <span><span class="dot" style="background:var(--blue)"></span>Completo</span>
       <span><span class="dot" style="background:var(--amber)"></span>Em andamento</span>
@@ -283,15 +294,24 @@
   function barra(pct){
     if(pct === null || pct === undefined) return "—";
     const largura = Math.min(pct*100, 100);
-    return `<div class="bar-wrap"><div class="bar-fill" style="width:${largura}%"></div></div>`;
+    return `<div style="display:flex; align-items:center; gap:8px; justify-content:flex-end;">
+      <span>${fmtPct(pct)}</span>
+      <div class="bar-wrap"><div class="bar-fill" style="width:${largura}%"></div></div>
+    </div>`;
+  }
+
+  function fmtPeso(p){
+    if(p === null || p === undefined) return "—";
+    return p.toLocaleString("pt-BR", {maximumFractionDigits:1}) + " kg";
   }
 
   function renderTabela(linhas, tipo){
     if(!linhas || linhas.length === 0){
-      return `<div class="state">Nenhum registro com data de entrada encontrado.</div>`;
+      return `<div class="state">Nenhum registro encontrado com esse filtro.</div>`;
     }
     const chaveHeader = tipo === "entrada" ? "Nº Compromisso" : "Contrato / Chave";
     const origemHeader = tipo === "entrada" ? "Fornecedor" : "Origem";
+    const mostrarPeso = tipo === "entrada";
 
     const linhasHtml = linhas.map(l => {
       const chave = tipo === "entrada" ? l.compromisso : l.chave;
@@ -305,6 +325,7 @@
           <td class="num">${fmt(l.acumulado)}</td>
           <td class="num">${l.falta === null ? "SEM INFO" : fmt(l.falta)}</td>
           <td class="num">${barra(l.percentual)}</td>
+          ${mostrarPeso ? `<td class="num">${fmtPeso(l.pesoMedio)}</td>` : ""}
           <td>${badge(l.status)}</td>
         </tr>`;
     }).join("");
@@ -324,6 +345,7 @@
             <th class="num">Recebido acum.</th>
             <th class="num">Falta chegar</th>
             <th class="num">% Recebido</th>
+            ${mostrarPeso ? `<th class="num">Peso médio</th>` : ""}
             <th>Status</th>
           </tr>
         </thead>
@@ -334,27 +356,34 @@
             <td class="num">${fmt(totalContratado)}</td>
             <td class="num">${fmt(totalDia)}</td>
             <td class="num">${fmt(totalAcum)}</td>
-            <td colspan="3"></td>
+            <td colspan="${mostrarPeso ? 4 : 3}"></td>
           </tr>
         </tfoot>
       </table>`;
   }
 
-  function aplicarFiltro(linhas, termo, tipo){
-    if(!termo) return linhas;
-    const t = termo.toLowerCase();
-    return linhas.filter(l => {
-      const chave = String(tipo === "entrada" ? l.compromisso : l.chave).toLowerCase();
-      const origem = String(tipo === "entrada" ? (l.fornecedor||"") : (l.origem||"")).toLowerCase();
-      return chave.includes(t) || origem.includes(t);
-    });
+  function aplicarFiltro(linhas, termo, tipo, status){
+    let resultado = linhas;
+    if(status){
+      resultado = resultado.filter(l => l.status === status);
+    }
+    if(termo){
+      const t = termo.toLowerCase();
+      resultado = resultado.filter(l => {
+        const chave = String(tipo === "entrada" ? l.compromisso : l.chave).toLowerCase();
+        const origem = String(tipo === "entrada" ? (l.fornecedor||"") : (l.origem||"")).toLowerCase();
+        return chave.includes(t) || origem.includes(t);
+      });
+    }
+    return resultado;
   }
 
   function render(){
     if(!dadosCompletos) return;
     const bloco = abaAtiva === "entrada" ? dadosCompletos.entradaCompra : dadosCompletos.desmama;
     const termo = document.getElementById("search").value.trim();
-    const linhasFiltradas = aplicarFiltro(bloco.linhas || [], termo, abaAtiva);
+    const status = document.getElementById("filtro-status").value;
+    const linhasFiltradas = aplicarFiltro(bloco.linhas || [], termo, abaAtiva, status);
     document.getElementById("content").innerHTML = renderTabela(linhasFiltradas, abaAtiva);
   }
 
@@ -391,6 +420,7 @@
   });
 
   document.getElementById("search").addEventListener("input", render);
+  document.getElementById("filtro-status").addEventListener("change", render);
 
   document.getElementById("toggle-upload").addEventListener("click", () => {
     const body = document.getElementById("upload-body");
