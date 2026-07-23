@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Acompanhamento de Contratos — Grupo Agroparanã</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
   :root{
     --bg: #12201a;
@@ -272,6 +274,11 @@
     </div>
   </div>
 
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+    <button class="btn-send" id="btn-pdf">📄 Baixar relatório em PDF</button>
+    <span class="upload-status" id="pdf-status"></span>
+  </div>
+
   <div class="table-card">
     <div class="table-scroll" id="content">
       <div class="state" id="loading">Carregando dados…</div>
@@ -518,6 +525,151 @@
   }
 
   document.getElementById("btn-enviar").addEventListener("click", enviarArquivo);
+
+  // ---------- geração de PDF ----------
+  function desenharCabecalhoRodapePdf(doc, W, H, headerH){
+    doc.setFillColor(18, 32, 26);
+    doc.rect(0, 0, W, headerH, 'F');
+    doc.setTextColor(238, 232, 216);
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ACOMPANHAMENTO DE CONTRATOS', 10, headerH/2 + 4);
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(201, 151, 63);
+    doc.text('Grupo Agroparanã', W - 10, headerH/2 + 4, { align: 'right' });
+    doc.setFontSize(7);
+    doc.setTextColor(150, 150, 150);
+    doc.text('Gerado em: ' + new Date().toLocaleString('pt-BR'), W - 10, H - 5, { align: 'right' });
+  }
+
+  function statusLabelTexto(status){
+    return (STATUS_LABEL[status] || ["", status])[1];
+  }
+
+  function construirCorpoTabelaPdf(linhas, tipo){
+    const mostrarPeso = tipo === "entrada";
+    return linhas.map(l => {
+      const chave = tipo === "entrada" ? l.compromisso : l.chave;
+      const origem = tipo === "entrada" ? l.fornecedor : l.origem;
+      const row = [
+        String(chave),
+        origem || "—",
+        fmt(l.contratado),
+        fmt(l.entradaNoDia),
+        fmt(l.acumulado),
+        l.falta === null ? "SEM INFO" : fmt(l.falta),
+        l.percentual === null ? "—" : fmtPct(l.percentual),
+      ];
+      if(mostrarPeso) row.push(fmtPeso(l.pesoMedio));
+      row.push(statusLabelTexto(l.status));
+      return row;
+    });
+  }
+
+  document.getElementById("btn-pdf").addEventListener("click", async () => {
+    const btn = document.getElementById("btn-pdf");
+    const status = document.getElementById("pdf-status");
+    if(!dadosCompletos){
+      status.className = "upload-status erro";
+      status.textContent = "Carregue os dados antes de gerar o PDF.";
+      return;
+    }
+    btn.disabled = true;
+    const textoOriginal = btn.textContent;
+    btn.textContent = "Gerando PDF…";
+    status.className = "upload-status";
+    status.textContent = "";
+
+    try{
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const W = 297, H = 210;
+      const margin = 12;
+      const headerH = 16;
+
+      const termoAtivo = document.getElementById("search").value.trim();
+      const statusAtivo = document.getElementById("filtro-status").value;
+      const statusSelectEl = document.getElementById("filtro-status");
+      const statusLabelAtivo = statusAtivo ? statusSelectEl.options[statusSelectEl.selectedIndex].text : "";
+      const descricaoFiltro = [
+        termoAtivo ? `busca: "${termoAtivo}"` : null,
+        statusAtivo ? `status: ${statusLabelAtivo}` : null,
+      ].filter(Boolean).join(" · ");
+
+      const blocos = [
+        { chave: "entradaCompra", titulo: "Entrada Compra", tipo: "entrada" },
+        { chave: "desmama", titulo: "Desmama", tipo: "desmama" },
+      ];
+
+      blocos.forEach((bloco, i) => {
+        if(i > 0) doc.addPage();
+        desenharCabecalhoRodapePdf(doc, W, H, headerH);
+        let y = headerH + 12;
+
+        doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(15,15,15);
+        doc.text(bloco.titulo, margin, y);
+        doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(110,110,110);
+        const dadosBloco = dadosCompletos[bloco.chave];
+        doc.text('Data de referência: ' + fmtData(dadosBloco.dataReferencia), W - margin, y, { align:'right' });
+        y += 5;
+        if(descricaoFiltro){
+          doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(150,120,50);
+          doc.text('Filtro aplicado — ' + descricaoFiltro, margin, y);
+          y += 5;
+        }
+        y += 1;
+
+        const linhasOrdenadas = ordenarLinhas(aplicarFiltro(dadosBloco.linhas || [], termoAtivo, bloco.tipo, statusAtivo));
+        const mostrarPeso = bloco.tipo === "entrada";
+        const chaveHeader = bloco.tipo === "entrada" ? "Nº Compromisso" : "Contrato / Chave";
+        const origemHeader = bloco.tipo === "entrada" ? "Fornecedor" : "Origem";
+        const head = [[chaveHeader, origemHeader, "Nº Animais Contratados", "Entrada no dia", "Recebido acum.", "Falta chegar", "% Recebido"]];
+        if(mostrarPeso) head[0].push("Peso médio");
+        head[0].push("Status");
+
+        const body = construirCorpoTabelaPdf(linhasOrdenadas, bloco.tipo);
+
+        const totalContratado = linhasOrdenadas.reduce((s,l) => s + (l.contratado||0), 0);
+        const totalDia = linhasOrdenadas.reduce((s,l) => s + (l.entradaNoDia||0), 0);
+        const totalAcum = linhasOrdenadas.reduce((s,l) => s + (l.acumulado||0), 0);
+        const totalRow = ["TOTAL — " + linhasOrdenadas.length + " registro(s)", "", fmt(totalContratado), fmt(totalDia), fmt(totalAcum), "", ""];
+        if(mostrarPeso) totalRow.push("");
+        totalRow.push("");
+        body.push(totalRow);
+
+        doc.autoTable({
+          head, body,
+          startY: y,
+          margin: { top: headerH + 4, left: margin, right: margin, bottom: 10 },
+          theme: 'grid',
+          styles: { fontSize: 8, textColor: [40,40,40], cellPadding: 2, halign: 'center' },
+          columnStyles: { 0: { halign:'left' }, 1: { halign:'left' } },
+          headStyles: { fillColor: [33,54,42], textColor: [201,151,63], fontStyle:'bold', fontSize: 7.5 },
+          alternateRowStyles: { fillColor: [246,247,244] },
+          didDrawPage: () => desenharCabecalhoRodapePdf(doc, W, H, headerH),
+          didParseCell: (data) => {
+            if(data.row.index === body.length - 1){
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.fillColor = [230, 223, 200];
+            }
+          }
+        });
+      });
+
+      const dataStr = new Date().toISOString().slice(0,10);
+      doc.save(`acompanhamento-contratos-${dataStr}.pdf`);
+      status.className = "upload-status ok";
+      status.textContent = "✓ PDF gerado com sucesso.";
+    }catch(err){
+      console.error(err);
+      status.className = "upload-status erro";
+      status.textContent = "Erro ao gerar PDF: " + err.message;
+    }finally{
+      btn.disabled = false;
+      btn.textContent = textoOriginal;
+    }
+  });
 
   carregar();
 </script>
