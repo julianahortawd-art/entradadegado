@@ -137,23 +137,30 @@
 
   .table-card{
     border:1px solid var(--line); background:var(--bg-panel); border-radius:var(--radius);
-    overflow:hidden;
   }
-  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  .table-scroll{ overflow-x:auto; border-radius:var(--radius); }
+  .table-scroll table th:first-child,
+  .table-scroll table td:first-child{
+    position:sticky; left:0; z-index:2; background:var(--bg-panel);
+    box-shadow: 2px 0 6px rgba(0,0,0,.35);
+  }
+  .table-scroll table thead th:first-child{ z-index:3; background:var(--bg-panel-raised); }
+  .table-scroll table tfoot td:first-child{ background:var(--bg-panel-raised); }
+  table{ width:100%; border-collapse:collapse; font-size:12.5px; }
   thead th{
-    text-align:left; font-size:11px; letter-spacing:.5px;
+    text-align:left; font-size:10.5px; letter-spacing:.4px;
     text-transform:uppercase; color:var(--gold); font-weight:700;
-    padding:13px 16px; border-bottom:1px solid var(--line); white-space:nowrap;
+    padding:12px 12px; border-bottom:1px solid var(--line); white-space:nowrap;
     background:var(--bg-panel-raised);
   }
   thead th.num, td.num{ text-align:right; }
   tbody td{
-    padding:11px 16px; border-bottom:1px solid var(--line-soft); color:var(--text);
+    padding:10px 12px; border-bottom:1px solid var(--line-soft); color:var(--text);
     white-space:nowrap; font-variant-numeric:tabular-nums;
   }
   tbody tr:last-child td{ border-bottom:none; }
   tbody tr:hover{ background:rgba(255,255,255,0.02); }
-  td.fornecedor{ color:var(--text-dim); max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  td.fornecedor{ color:var(--text-dim); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   .badge{
     display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:700;
@@ -165,13 +172,13 @@
   .badge.seminfo{ color:var(--rust); border-color:rgba(181,83,58,.4); background:var(--rust-soft); }
   .badge.naoiniciado{ color:var(--text-dim); border-color:var(--line); background:rgba(255,255,255,.03); }
 
-  .bar-wrap{ width:100px; height:5px; background:rgba(255,255,255,.08); border-radius:999px; overflow:hidden; }
+  .bar-wrap{ width:64px; height:5px; background:rgba(255,255,255,.08); border-radius:999px; overflow:hidden; }
   .bar-fill{ height:100%; background:var(--gold); }
 
   tfoot td{
-    padding:12px 16px; font-weight:700; color:var(--gold);
+    padding:11px 12px; font-weight:700; color:var(--gold);
     border-top:2px solid var(--gold); background:var(--bg-panel-raised);
-    font-size:12.5px;
+    font-size:12px;
   }
 
   .state{
@@ -261,7 +268,7 @@
   </div>
 
   <div class="table-card">
-    <div id="content">
+    <div class="table-scroll" id="content">
       <div class="state" id="loading">Carregando dados…</div>
     </div>
   </div>
