@@ -148,15 +148,16 @@
   .table-scroll table tfoot td:first-child{ background:var(--bg-panel-raised); }
   table{ width:100%; border-collapse:collapse; font-size:12.5px; }
   thead th{
-    text-align:left; font-size:10.5px; letter-spacing:.4px;
+    text-align:center; font-size:10.5px; letter-spacing:.4px;
     text-transform:uppercase; color:var(--gold); font-weight:700;
-    padding:12px 12px; border-bottom:1px solid var(--line); white-space:nowrap;
-    background:var(--bg-panel-raised);
+    padding:12px 12px; border-bottom:1px solid var(--line); white-space:normal;
+    background:var(--bg-panel-raised); line-height:1.35;
   }
-  thead th.num, td.num{ text-align:right; }
+  thead th.left{ text-align:left; }
+  td.left{ text-align:left; }
   tbody td{
     padding:10px 12px; border-bottom:1px solid var(--line-soft); color:var(--text);
-    white-space:nowrap; font-variant-numeric:tabular-nums;
+    white-space:nowrap; font-variant-numeric:tabular-nums; text-align:center;
   }
   tbody tr:last-child td{ border-bottom:none; }
   tbody tr:hover{ background:rgba(255,255,255,0.02); }
@@ -306,7 +307,7 @@
   function barra(pct){
     if(pct === null || pct === undefined) return "—";
     const largura = Math.min(pct*100, 100);
-    return `<div style="display:flex; align-items:center; gap:8px; justify-content:flex-end;">
+    return `<div style="display:flex; align-items:center; gap:8px; justify-content:center;">
       <span>${fmtPct(pct)}</span>
       <div class="bar-wrap"><div class="bar-fill" style="width:${largura}%"></div></div>
     </div>`;
@@ -330,14 +331,14 @@
       const origem = tipo === "entrada" ? l.fornecedor : l.origem;
       return `
         <tr>
-          <td>${chave}</td>
-          <td class="fornecedor" title="${origem||''}">${origem || "—"}</td>
-          <td class="num">${fmt(l.contratado)}</td>
-          <td class="num">${fmt(l.entradaNoDia)}</td>
-          <td class="num">${fmt(l.acumulado)}</td>
-          <td class="num">${l.falta === null ? "SEM INFO" : fmt(l.falta)}</td>
-          <td class="num">${barra(l.percentual)}</td>
-          ${mostrarPeso ? `<td class="num">${fmtPeso(l.pesoMedio)}</td>` : ""}
+          <td class="left">${chave}</td>
+          <td class="fornecedor left" title="${origem||''}">${origem || "—"}</td>
+          <td>${fmt(l.contratado)}</td>
+          <td>${fmt(l.entradaNoDia)}</td>
+          <td>${fmt(l.acumulado)}</td>
+          <td>${l.falta === null ? "SEM INFO" : fmt(l.falta)}</td>
+          <td>${barra(l.percentual)}</td>
+          ${mostrarPeso ? `<td>${fmtPeso(l.pesoMedio)}</td>` : ""}
           <td>${badge(l.status)}</td>
         </tr>`;
     }).join("");
@@ -350,28 +351,37 @@
       <table>
         <thead>
           <tr>
-            <th>${chaveHeader}</th>
-            <th>${origemHeader}</th>
-            <th class="num">Contratado</th>
-            <th class="num">Entrada no dia</th>
-            <th class="num">Recebido acum.</th>
-            <th class="num">Falta chegar</th>
-            <th class="num">% Recebido</th>
-            ${mostrarPeso ? `<th class="num">Peso médio</th>` : ""}
+            <th class="left">${chaveHeader}</th>
+            <th class="left">${origemHeader}</th>
+            <th>Nº Animais<br>Contratados</th>
+            <th>Entrada<br>no dia</th>
+            <th>Recebido<br>acum.</th>
+            <th>Falta<br>chegar</th>
+            <th>% Recebido</th>
+            ${mostrarPeso ? `<th>Peso<br>médio</th>` : ""}
             <th>Status</th>
           </tr>
         </thead>
         <tbody id="tbody">${linhasHtml}</tbody>
         <tfoot>
           <tr>
-            <td colspan="2">TOTAL — ${linhas.length} registro(s)</td>
-            <td class="num">${fmt(totalContratado)}</td>
-            <td class="num">${fmt(totalDia)}</td>
-            <td class="num">${fmt(totalAcum)}</td>
+            <td colspan="2" class="left">TOTAL — ${linhas.length} registro(s)</td>
+            <td>${fmt(totalContratado)}</td>
+            <td>${fmt(totalDia)}</td>
+            <td>${fmt(totalAcum)}</td>
             <td colspan="${mostrarPeso ? 4 : 3}"></td>
           </tr>
         </tfoot>
       </table>`;
+  }
+
+  function ordenarLinhas(linhas){
+    return [...linhas].sort((a,b) => {
+      const aCompleto = a.status === "COMPLETO" ? 0 : 1;
+      const bCompleto = b.status === "COMPLETO" ? 0 : 1;
+      if(aCompleto !== bCompleto) return aCompleto - bCompleto;
+      return (b.acumulado||0) - (a.acumulado||0);
+    });
   }
 
   function aplicarFiltro(linhas, termo, tipo, status){
@@ -395,7 +405,7 @@
     const bloco = abaAtiva === "entrada" ? dadosCompletos.entradaCompra : dadosCompletos.desmama;
     const termo = document.getElementById("search").value.trim();
     const status = document.getElementById("filtro-status").value;
-    const linhasFiltradas = aplicarFiltro(bloco.linhas || [], termo, abaAtiva, status);
+    const linhasFiltradas = ordenarLinhas(aplicarFiltro(bloco.linhas || [], termo, abaAtiva, status));
     document.getElementById("content").innerHTML = renderTabela(linhasFiltradas, abaAtiva);
   }
 
