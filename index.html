@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Acompanhamento de Contratos — Grupo Agroparanã</title>
+<style>
+  :root{
+    --bg: #0b0b0a;
+    --bg-texture: radial-gradient(circle at 20% 10%, rgba(255,255,255,0.035), transparent 40%),
+                   radial-gradient(circle at 85% 80%, rgba(255,255,255,0.03), transparent 45%);
+    --surface: #141311;
+    --surface-2: #1b1a17;
+    --border: rgba(255,255,255,0.09);
+    --border-soft: rgba(255,255,255,0.05);
+    --cream: #f2ede2;
+    --cream-dim: #b8b2a4;
+    --muted: #7c7669;
+    --gold: #c9a13b;
+    --blue: #6f9bc4;
+    --amber: #d0973f;
+    --rust: #b0574f;
+    --gray: #6c675d;
+    --radius: 14px;
+    --font-display: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "SF Mono", "Roboto Mono", Consolas, monospace;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; background:var(--bg); color:var(--cream);
+    font-family:var(--font-body);
+    min-height:100vh;
+  }
+  body{
+    background-image: var(--bg-texture);
+  }
+  ::selection{ background:var(--gold); color:#0b0b0a; }
+
+  a{ color:inherit; text-decoration:none; }
+
+  .wrap{ max-width:1180px; margin:0 auto; padding:32px 24px 80px; }
+
+  header.top{
+    display:flex; align-items:flex-start; justify-content:space-between;
+    gap:24px; margin-bottom:28px; flex-wrap:wrap;
+  }
+  .back{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:13px; color:var(--cream-dim); border:1px solid var(--border);
+    padding:7px 13px; border-radius:999px; transition:border-color .15s, color .15s;
+  }
+  .back:hover{ border-color:var(--gold); color:var(--gold); }
+
+  .titles{ flex:1; min-width:260px; }
+  .eyebrow{
+    font-family:var(--font-mono); letter-spacing:.14em; text-transform:uppercase;
+    font-size:11px; color:var(--gold); margin-bottom:8px;
+  }
+  h1{
+    font-family:var(--font-display); font-weight:400; font-size:clamp(28px,4vw,40px);
+    margin:0 0 6px; color:var(--cream); letter-spacing:.01em;
+  }
+  .sub{ color:var(--cream-dim); font-size:14.5px; max-width:640px; line-height:1.5; }
+
+  .meta-panel{
+    border:1px solid var(--border); background:var(--surface);
+    border-radius:var(--radius); padding:14px 18px; min-width:220px;
+    font-size:12.5px; color:var(--cream-dim);
+  }
+  .meta-panel div + div{ margin-top:6px; }
+  .meta-panel b{ color:var(--cream); font-weight:600; }
+
+  nav.tabs{
+    display:flex; gap:6px; margin-bottom:22px; border-bottom:1px solid var(--border);
+  }
+  .tab{
+    font-family:var(--font-mono); font-size:12.5px; letter-spacing:.05em;
+    text-transform:uppercase; color:var(--muted); padding:11px 4px; margin-right:22px;
+    border-bottom:2px solid transparent; cursor:pointer; background:none; border-top:none; border-left:none; border-right:none;
+  }
+  .tab.active{ color:var(--gold); border-bottom-color:var(--gold); }
+  .tab:hover:not(.active){ color:var(--cream-dim); }
+
+  .toolbar{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    margin-bottom:16px; flex-wrap:wrap;
+  }
+  .search{
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:9px 14px; color:var(--cream); font-size:13.5px; min-width:230px;
+  }
+  .search:focus{ outline:none; border-color:var(--gold); }
+  .search::placeholder{ color:var(--muted); }
+
+  .legend{ display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--cream-dim); }
+  .legend span{ display:inline-flex; align-items:center; gap:6px; }
+  .dot{ width:8px; height:8px; border-radius:50%; display:inline-block; }
+
+  .table-card{
+    border:1px solid var(--border); background:var(--surface); border-radius:var(--radius);
+    overflow:hidden;
+  }
+  table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  thead th{
+    text-align:left; font-family:var(--font-mono); font-size:10.5px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--muted); font-weight:500;
+    padding:14px 16px; border-bottom:1px solid var(--border); white-space:nowrap;
+    background:var(--surface-2);
+  }
+  thead th.num, td.num{ text-align:right; }
+  tbody td{
+    padding:12px 16px; border-bottom:1px solid var(--border-soft); color:var(--cream);
+    white-space:nowrap;
+  }
+  tbody tr:last-child td{ border-bottom:none; }
+  tbody tr:hover{ background:rgba(255,255,255,0.02); }
+  td.fornecedor{ color:var(--cream-dim); max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  .badge{
+    display:inline-flex; align-items:center; gap:6px; font-size:11px;
+    font-family:var(--font-mono); letter-spacing:.04em; text-transform:uppercase;
+    padding:4px 10px; border-radius:999px; border:1px solid transparent;
+  }
+  .badge.completo{ color:var(--blue); border-color:rgba(111,155,196,.4); background:rgba(111,155,196,.08); }
+  .badge.andamento{ color:var(--amber); border-color:rgba(208,151,63,.4); background:rgba(208,151,63,.08); }
+  .badge.seminfo{ color:var(--rust); border-color:rgba(176,87,79,.4); background:rgba(176,87,79,.08); }
+  .badge.naoiniciado{ color:var(--gray); border-color:rgba(255,255,255,.14); background:rgba(255,255,255,.03); }
+
+  .bar-wrap{ width:100px; height:5px; background:rgba(255,255,255,.08); border-radius:999px; overflow:hidden; }
+  .bar-fill{ height:100%; background:var(--gold); }
+
+  tfoot td{
+    padding:13px 16px; font-weight:600; color:var(--cream);
+    border-top:1px solid var(--border); background:var(--surface-2);
+    font-family:var(--font-mono); font-size:12.5px;
+  }
+
+  .state{
+    text-align:center; padding:70px 20px; color:var(--muted); font-size:14px;
+  }
+  .state.error{ color:var(--rust); }
+  .state code{
+    display:block; margin-top:10px; font-family:var(--font-mono); font-size:11.5px;
+    color:var(--cream-dim); background:var(--surface-2); padding:10px 14px; border-radius:8px;
+    border:1px solid var(--border); max-width:560px; margin-left:auto; margin-right:auto;
+    white-space:pre-wrap; text-align:left;
+  }
+
+  footer.page{
+    margin-top:40px; text-align:center; font-size:11.5px; color:var(--muted);
+    font-family:var(--font-mono);
+  }
+
+  @media (max-width: 720px){
+    .wrap{ padding:24px 14px 60px; }
+    thead th, tbody td{ padding:10px 10px; }
+    table{ font-size:12.5px; }
+    td.fornecedor{ max-width:120px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div class="titles">
+      <a class="back" href="https://ecosparana.vercel.app/" style="margin-bottom:16px; width:fit-content;">
+        ← Ecossistema Grupo Agroparanã
+      </a>
+      <div class="eyebrow">Compras &amp; Recria · Grupo Agroparanã</div>
+      <h1>Acompanhamento de Contratos</h1>
+      <div class="sub">Entrada de compra e desmama por compromisso/contrato: quanto foi contratado, quanto já chegou e quanto ainda falta.</div>
+    </div>
+    <div class="meta-panel" id="meta-panel">
+      <div>Referência (compra): <b id="ref-ec">—</b></div>
+      <div>Referência (desmama): <b id="ref-dm">—</b></div>
+      <div>Atualizado em: <b id="ref-gerado">—</b></div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="entrada">Entrada Compra</button>
+    <button class="tab" data-tab="desmama">Desmama</button>
+  </nav>
+
+  <div class="toolbar">
+    <input class="search" id="search" type="text" placeholder="Buscar fornecedor, compromisso ou contrato…">
+    <div class="legend">
+      <span><span class="dot" style="background:var(--blue)"></span>Completo</span>
+      <span><span class="dot" style="background:var(--amber)"></span>Em andamento</span>
+      <span><span class="dot" style="background:var(--gray)"></span>Não iniciado</span>
+      <span><span class="dot" style="background:var(--rust)"></span>Sem info de contrato</span>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <div id="content">
+      <div class="state" id="loading">Carregando dados…</div>
+    </div>
+  </div>
+
+  <footer class="page">Grupo Agroparanã · painel gerado a partir da planilha de compras</footer>
+</div>
+
+<script>
+  // Cole aqui a URL do seu Apps Script publicado (termina em /exec)
+  const API_URL = "https://script.google.com/macros/s/AKfycbzqT1HA0UcVAt8JIroZoDkpSl6UtIp1Ast7bj4kD60OKx2oEPqqe059Tzqm4rwCyh7hxA/exec";
+
+  let dadosCompletos = null;
+  let abaAtiva = "entrada";
+
+  const fmt = n => (n === null || n === undefined) ? "—" : n.toLocaleString("pt-BR");
+  const fmtPct = p => (p === null || p === undefined) ? "—" : (p*100).toLocaleString("pt-BR",{maximumFractionDigits:1}) + "%";
+  const fmtData = iso => {
+    if(!iso) return "—";
+    const [y,m,d] = iso.split("-");
+    return `${d}/${m}/${y}`;
+  };
+
+  const STATUS_LABEL = {
+    COMPLETO: ["completo","Completo"],
+    EM_ANDAMENTO: ["andamento","Em andamento"],
+    NAO_INICIADO: ["naoiniciado","Não iniciado"],
+    SEM_INFO: ["seminfo","Sem info"],
+  };
+
+  function badge(status){
+    const [cls,label] = STATUS_LABEL[status] || ["naoiniciado", status];
+    return `<span class="badge ${cls}">${label}</span>`;
+  }
+
+  function barra(pct){
+    if(pct === null || pct === undefined) return "—";
+    const largura = Math.min(pct*100, 100);
+    return `<div class="bar-wrap"><div class="bar-fill" style="width:${largura}%"></div></div>`;
+  }
+
+  function renderTabela(linhas, tipo){
+    if(!linhas || linhas.length === 0){
+      return `<div class="state">Nenhum registro com data de entrada encontrado.</div>`;
+    }
+    const chaveHeader = tipo === "entrada" ? "Nº Compromisso" : "Contrato / Chave";
+    const origemHeader = tipo === "entrada" ? "Fornecedor" : "Origem";
+
+    const linhasHtml = linhas.map(l => {
+      const chave = tipo === "entrada" ? l.compromisso : l.chave;
+      const origem = tipo === "entrada" ? l.fornecedor : l.origem;
+      return `
+        <tr>
+          <td>${chave}</td>
+          <td class="fornecedor" title="${origem||''}">${origem || "—"}</td>
+          <td class="num">${fmt(l.contratado)}</td>
+          <td class="num">${fmt(l.entradaNoDia)}</td>
+          <td class="num">${fmt(l.acumulado)}</td>
+          <td class="num">${l.falta === null ? "SEM INFO" : fmt(l.falta)}</td>
+          <td class="num">${barra(l.percentual)}</td>
+          <td>${badge(l.status)}</td>
+        </tr>`;
+    }).join("");
+
+    const totalContratado = linhas.reduce((s,l) => s + (l.contratado||0), 0);
+    const totalDia = linhas.reduce((s,l) => s + (l.entradaNoDia||0), 0);
+    const totalAcum = linhas.reduce((s,l) => s + (l.acumulado||0), 0);
+
+    return `
+      <table>
+        <thead>
+          <tr>
+            <th>${chaveHeader}</th>
+            <th>${origemHeader}</th>
+            <th class="num">Contratado</th>
+            <th class="num">Entrada no dia</th>
+            <th class="num">Recebido acum.</th>
+            <th class="num">Falta chegar</th>
+            <th class="num">% Recebido</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">${linhasHtml}</tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2">TOTAL — ${linhas.length} registro(s)</td>
+            <td class="num">${fmt(totalContratado)}</td>
+            <td class="num">${fmt(totalDia)}</td>
+            <td class="num">${fmt(totalAcum)}</td>
+            <td colspan="3"></td>
+          </tr>
+        </tfoot>
+      </table>`;
+  }
+
+  function aplicarFiltro(linhas, termo, tipo){
+    if(!termo) return linhas;
+    const t = termo.toLowerCase();
+    return linhas.filter(l => {
+      const chave = String(tipo === "entrada" ? l.compromisso : l.chave).toLowerCase();
+      const origem = String(tipo === "entrada" ? (l.fornecedor||"") : (l.origem||"")).toLowerCase();
+      return chave.includes(t) || origem.includes(t);
+    });
+  }
+
+  function render(){
+    if(!dadosCompletos) return;
+    const bloco = abaAtiva === "entrada" ? dadosCompletos.entradaCompra : dadosCompletos.desmama;
+    const termo = document.getElementById("search").value.trim();
+    const linhasFiltradas = aplicarFiltro(bloco.linhas || [], termo, abaAtiva);
+    document.getElementById("content").innerHTML = renderTabela(linhasFiltradas, abaAtiva);
+  }
+
+  function atualizarMeta(){
+    document.getElementById("ref-ec").textContent = fmtData(dadosCompletos.entradaCompra.dataReferencia);
+    document.getElementById("ref-dm").textContent = fmtData(dadosCompletos.desmama.dataReferencia);
+    const gerado = new Date(dadosCompletos.geradoEm);
+    document.getElementById("ref-gerado").textContent = gerado.toLocaleString("pt-BR");
+  }
+
+  async function carregar(){
+    try{
+      const resp = await fetch(API_URL);
+      if(!resp.ok) throw new Error("HTTP " + resp.status);
+      dadosCompletos = await resp.json();
+      atualizarMeta();
+      render();
+    }catch(err){
+      document.getElementById("content").innerHTML = `
+        <div class="state error">
+          Não foi possível carregar os dados.
+          <code>${err.message}\n\nConfira se API_URL está preenchida com o link do Apps Script publicado (/exec) e se a implantação está com acesso "Qualquer pessoa".</code>
+        </div>`;
+    }
+  }
+
+  document.querySelectorAll(".tab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      abaAtiva = btn.dataset.tab;
+      render();
+    });
+  });
+
+  document.getElementById("search").addEventListener("input", render);
+
+  carregar();
+</script>
+</body>
+</html>
