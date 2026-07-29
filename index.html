@@ -226,7 +226,6 @@
     <div class="meta-row">
       <div class="meta-panel" id="meta-panel">
         <div>Referência (compra): <b id="ref-ec">—</b></div>
-        <div>Referência (desmama): <b id="ref-dm">—</b></div>
         <div>Atualizado em: <b id="ref-gerado">—</b></div>
       </div>
       <div class="update-wrap">
@@ -252,7 +251,7 @@
 
   <nav class="tabs">
     <button class="tab active" data-tab="entrada">Entrada Compra</button>
-    <button class="tab" data-tab="desmama">Desmama</button>
+    <button class="tab" data-tab="status-desmama">Status Desmama (GTA)</button>
   </nav>
 
   <div class="toolbar">
@@ -422,10 +421,76 @@
     return resultado;
   }
 
+  function checkBadge(ok){
+    return ok
+      ? `<span class="badge completo">✓ OK</span>`
+      : `<span class="badge seminfo">✗ Pendente</span>`;
+  }
+
+  function renderStatusDesmama(linhas){
+    if(!linhas || linhas.length === 0){
+      return `<div class="state">Nenhum GTA encontrado.</div>`;
+    }
+    const linhasHtml = linhas.map(l => `
+        <tr>
+          <td class="left">${l.gta}</td>
+          <td>${fmt(l.qtdAnimais)}</td>
+          <td>${fmtData(l.dataEntrada)}</td>
+          <td>${checkBadge(l.fichaSanitaria)}</td>
+          <td>${checkBadge(l.corporate)}</td>
+          <td>${checkBadge(l.certificadora)}</td>
+        </tr>`).join("");
+
+    return `
+      <table>
+        <colgroup>
+          <col class="col-chave">
+          <col class="col-num">
+          <col class="col-num">
+          <col class="col-status">
+          <col class="col-status">
+          <col class="col-status">
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="left">GTA</th>
+            <th>Qtd<br>Animais</th>
+            <th>Data<br>Entrada</th>
+            <th>Ficha<br>Sanitária</th>
+            <th>Corporate</th>
+            <th>Certificadora</th>
+          </tr>
+        </thead>
+        <tbody>${linhasHtml}</tbody>
+        <tfoot>
+          <tr>
+            <td class="left">TOTAL — ${linhas.length} GTA(s)</td>
+            <td>${fmt(linhas.reduce((s,l) => s + (l.qtdAnimais||0), 0))}</td>
+            <td colspan="4"></td>
+          </tr>
+        </tfoot>
+      </table>`;
+  }
+
   function render(){
     if(!dadosCompletos) return;
-    const bloco = abaAtiva === "entrada" ? dadosCompletos.entradaCompra : dadosCompletos.desmama;
     const termo = document.getElementById("search").value.trim();
+
+    if(abaAtiva === "status-desmama"){
+      document.getElementById("filtro-status").style.display = "none";
+      document.querySelector(".legend").style.display = "none";
+      let linhas = (dadosCompletos.statusDesmama && dadosCompletos.statusDesmama.linhas) || [];
+      if(termo){
+        const t = termo.toLowerCase();
+        linhas = linhas.filter(l => String(l.gta).toLowerCase().includes(t));
+      }
+      document.getElementById("content").innerHTML = renderStatusDesmama(linhas);
+      return;
+    }
+
+    document.getElementById("filtro-status").style.display = "";
+    document.querySelector(".legend").style.display = "";
+    const bloco = abaAtiva === "entrada" ? dadosCompletos.entradaCompra : dadosCompletos.desmama;
     const status = document.getElementById("filtro-status").value;
     const linhasFiltradas = ordenarLinhas(aplicarFiltro(bloco.linhas || [], termo, abaAtiva, status));
     document.getElementById("content").innerHTML = renderTabela(linhasFiltradas, abaAtiva);
@@ -433,7 +498,6 @@
 
   function atualizarMeta(){
     document.getElementById("ref-ec").textContent = fmtData(dadosCompletos.entradaCompra.dataReferencia);
-    document.getElementById("ref-dm").textContent = fmtData(dadosCompletos.desmama.dataReferencia);
     const gerado = new Date(dadosCompletos.geradoEm);
     document.getElementById("ref-gerado").textContent = gerado.toLocaleString("pt-BR");
   }
@@ -589,6 +653,65 @@
       const headerH = 16;
 
       const termoAtivo = document.getElementById("search").value.trim();
+
+      if(abaAtiva === "status-desmama"){
+        desenharCabecalhoRodapePdf(doc, W, H, headerH);
+        let y = headerH + 12;
+        doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(15,15,15);
+        doc.text('Status Desmama (GTA)', margin, y);
+        y += 5;
+        if(termoAtivo){
+          doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(150,120,50);
+          doc.text('Filtro aplicado — busca: "' + termoAtivo + '"', margin, y);
+          y += 5;
+        }
+        y += 1;
+
+        let linhasGta = (dadosCompletos.statusDesmama && dadosCompletos.statusDesmama.linhas) || [];
+        if(termoAtivo){
+          const t = termoAtivo.toLowerCase();
+          linhasGta = linhasGta.filter(l => String(l.gta).toLowerCase().includes(t));
+        }
+
+        const head = [["GTA", "Qtd Animais", "Data Entrada", "Ficha Sanitária", "Corporate", "Certificadora"]];
+        const body = linhasGta.map(l => [
+          String(l.gta),
+          fmt(l.qtdAnimais),
+          fmtData(l.dataEntrada),
+          l.fichaSanitaria ? "OK" : "Pendente",
+          l.corporate ? "OK" : "Pendente",
+          l.certificadora ? "OK" : "Pendente",
+        ]);
+        const totalRow = ["TOTAL — " + linhasGta.length + " GTA(s)", fmt(linhasGta.reduce((s,l)=>s+(l.qtdAnimais||0),0)), "", "", "", ""];
+        body.push(totalRow);
+
+        doc.autoTable({
+          head, body,
+          startY: y,
+          margin: { top: headerH + 4, left: margin, right: margin, bottom: 10 },
+          theme: 'grid',
+          styles: { fontSize: 8, textColor: [40,40,40], cellPadding: 2, halign: 'center' },
+          columnStyles: { 0: { halign:'left' } },
+          headStyles: { fillColor: [33,54,42], textColor: [201,151,63], fontStyle:'bold', fontSize: 7.5 },
+          alternateRowStyles: { fillColor: [246,247,244] },
+          didDrawPage: () => desenharCabecalhoRodapePdf(doc, W, H, headerH),
+          didParseCell: (data) => {
+            if(data.row.index === body.length - 1){
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.fillColor = [230, 223, 200];
+            }
+          }
+        });
+
+        const dataStr = new Date().toISOString().slice(0,10);
+        doc.save(`status-desmama-gta-${dataStr}.pdf`);
+        status.className = "upload-status ok";
+        status.textContent = "✓ PDF gerado com sucesso.";
+        btn.disabled = false;
+        btn.textContent = textoOriginal;
+        return;
+      }
+
       const statusAtivo = document.getElementById("filtro-status").value;
       const statusSelectEl = document.getElementById("filtro-status");
       const statusLabelAtivo = statusAtivo ? statusSelectEl.options[statusSelectEl.selectedIndex].text : "";
@@ -599,7 +722,6 @@
 
       const blocos = [
         { chave: "entradaCompra", titulo: "Entrada Compra", tipo: "entrada" },
-        { chave: "desmama", titulo: "Desmama", tipo: "desmama" },
       ];
 
       blocos.forEach((bloco, i) => {
