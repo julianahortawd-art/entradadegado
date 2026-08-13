@@ -251,12 +251,18 @@
     <div class="meta-row">
       <div class="meta-panel" id="meta-panel">
         <div>Referência (compra): <b id="ref-ec">—</b></div>
+        <div>Última importação automática: <b id="ref-auto">—</b></div>
         <div>Atualizado em: <b id="ref-gerado">—</b></div>
       </div>
       <div class="update-wrap">
         <button class="toggle-upload" id="toggle-upload">⟳ Atualizar dados</button>
         <div class="upload-popover" id="upload-body" hidden>
-          <p class="upload-hint">Suba a planilha exportada do sistema (com as abas "ENTRADA COMPRA" e "DESMAMA" dentro dela) — o conteúdo atual das duas bases é apagado e substituído pelo novo, igual no Estoque de Arrobas.</p>
+          <p class="upload-hint">O sistema importa sozinho a cada 5 minutos, direto do arquivo que o balanceiro preenche (sincronizado no Drive). Não precisa mais subir manualmente — isso aqui é só um atalho pra forçar a checagem agora, ou pra casos excepcionais.</p>
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:14px;">
+            <button class="btn-send" id="btn-verificar-agora">Verificar agora</button>
+            <span class="upload-status" id="status-verificar"></span>
+          </div>
+          <p class="upload-hint" style="margin-bottom:8px;">Upload manual (fallback):</p>
           <div class="upload-row">
             <input type="file" id="file-planilha" accept=".xlsx,.xls">
             <button class="btn-send" id="btn-enviar">Enviar</button>
@@ -691,6 +697,10 @@
     document.getElementById("ref-ec").textContent = fmtData(dadosCompletos.entradaCompra.dataReferencia);
     const gerado = new Date(dadosCompletos.geradoEm);
     document.getElementById("ref-gerado").textContent = gerado.toLocaleString("pt-BR");
+    const auto = document.getElementById("ref-auto");
+    auto.textContent = dadosCompletos.ultimaImportacaoAutomatica
+      ? new Date(dadosCompletos.ultimaImportacaoAutomatica).toLocaleString("pt-BR")
+      : "ainda não rodou";
   }
 
   async function carregar(){
@@ -780,6 +790,40 @@
   }
 
   document.getElementById("btn-enviar").addEventListener("click", enviarArquivo);
+
+  document.getElementById("btn-verificar-agora").addEventListener("click", async () => {
+    const btn = document.getElementById("btn-verificar-agora");
+    const status = document.getElementById("status-verificar");
+    btn.disabled = true;
+    status.className = "upload-status";
+    status.textContent = "Verificando…";
+    try{
+      const resp = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ acao: "verificar_agora" }),
+      });
+      const resultado = await resp.json();
+      if(!resultado.ok) throw new Error(resultado.erro || "Erro desconhecido.");
+      if(resultado.erro){
+        status.className = "upload-status erro";
+        status.textContent = resultado.erro;
+      } else if(resultado.atualizou){
+        status.className = "upload-status ok";
+        status.textContent = `✓ Tinha dado novo — importado agora (Entrada: ${resultado.linhasEntradaCompra}, Desmama: ${resultado.linhasDesmama}).`;
+        await carregar();
+      } else {
+        status.className = "upload-status ok";
+        status.textContent = "Verificado — nenhuma mudança desde a última importação.";
+        await carregar();
+      }
+    }catch(err){
+      status.className = "upload-status erro";
+      status.textContent = "Falhou: " + err.message;
+    }finally{
+      btn.disabled = false;
+    }
+  });
 
   // ---------- geração de PDF ----------
   function desenharCabecalhoRodapePdf(doc, W, H, headerH){
