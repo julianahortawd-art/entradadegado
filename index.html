@@ -140,6 +140,31 @@
   .legend span{ display:inline-flex; align-items:center; gap:6px; }
   .dot{ width:8px; height:8px; border-radius:50%; display:inline-block; }
 
+  .contrato-form{
+    border:1px solid var(--line); background:var(--bg-panel); border-radius:var(--radius);
+    padding:16px 18px; margin-bottom:16px;
+  }
+  .contrato-form-grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:10px; align-items:end; }
+  .contrato-form-grid label{ display:block; font-size:10.5px; letter-spacing:.3px; text-transform:uppercase; color:var(--text-dim); margin-bottom:5px; }
+  .contrato-form-grid input{
+    width:100%; background:var(--bg); border:1px solid var(--line); border-radius:6px;
+    padding:8px 10px; color:var(--text); font-size:13px;
+  }
+  .contrato-form-grid input:focus{ outline:none; border-color:var(--gold); }
+  @media (max-width: 900px){ .contrato-form-grid{ grid-template-columns:repeat(2,1fr); } }
+  .cell-input{
+    width:100%; background:transparent; border:1px solid transparent; border-radius:5px;
+    padding:5px 6px; color:var(--text); font-size:12.5px; text-align:center;
+  }
+  .cell-input:hover{ border-color:var(--line); }
+  .cell-input:focus{ outline:none; border-color:var(--gold); background:var(--bg); }
+  .cell-input.left{ text-align:left; }
+  .btn-del-contrato{
+    background:none; border:1px solid var(--rust); color:var(--rust); border-radius:6px;
+    padding:4px 10px; font-size:11px; cursor:pointer;
+  }
+  .btn-del-contrato:hover{ background:var(--rust-soft); }
+
   .table-card{
     border:1px solid var(--line); background:var(--bg-panel); border-radius:var(--radius);
   }
@@ -252,6 +277,7 @@
   <nav class="tabs">
     <button class="tab active" data-tab="entrada">Entrada Compra</button>
     <button class="tab" data-tab="status-desmama">Status Desmama (GTA)</button>
+    <button class="tab" data-tab="contratos">Contratos</button>
   </nav>
 
   <div class="toolbar">
@@ -273,7 +299,7 @@
     </div>
   </div>
 
-  <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;" id="pdf-row">
     <button class="btn-send" id="btn-pdf">📄 Baixar relatório em PDF</button>
     <span class="upload-status" id="pdf-status"></span>
   </div>
@@ -472,9 +498,82 @@
       </table>`;
   }
 
+  function renderContratos(linhas){
+    const linhasHtml = linhas.map(c => `
+      <tr>
+        <td><input class="cell-input" value="${c.compromisso ?? ''}" onblur="editarContrato(${c.linha},'compromisso',this.value)"></td>
+        <td><input class="cell-input left" value="${(c.produtor ?? '').toString().replace(/"/g,'&quot;')}" onblur="editarContrato(${c.linha},'produtor',this.value)"></td>
+        <td><input class="cell-input left" value="${(c.propriedade ?? '').toString().replace(/"/g,'&quot;')}" onblur="editarContrato(${c.linha},'propriedade',this.value)"></td>
+        <td><input class="cell-input" type="date" value="${c.dataContrato ?? ''}" onchange="editarContrato(${c.linha},'dataContrato',this.value)"></td>
+        <td><input class="cell-input" type="number" value="${c.quantidade ?? 0}" onblur="editarContrato(${c.linha},'quantidade',this.value)"></td>
+        <td><input class="cell-input left" value="${(c.observacao ?? '').toString().replace(/"/g,'&quot;')}" onblur="editarContrato(${c.linha},'observacao',this.value)"></td>
+        <td><button class="btn-del-contrato" onclick="excluirContratoUI(${c.linha})">Excluir</button></td>
+      </tr>`).join("");
+
+    const totalGeral = linhas.reduce((s,c) => s + (c.quantidade||0), 0);
+
+    return `
+      <div class="contrato-form">
+        <div class="contrato-form-grid">
+          <div><label>Nº Compromisso</label><input id="nc-compromisso" placeholder="ex: 732"></div>
+          <div><label>Produtor</label><input id="nc-produtor" placeholder="ex: Marcelo Pereira"></div>
+          <div><label>Propriedade/Origem</label><input id="nc-propriedade" placeholder="ex: Faz. Caibral"></div>
+          <div><label>Data Contrato</label><input id="nc-data" type="date"></div>
+          <div><label>Quantidade Contratada</label><input id="nc-quantidade" type="number" placeholder="0"></div>
+          <div><label>Observação</label><input id="nc-obs" placeholder="opcional"></div>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px; margin-top:12px;">
+          <button class="btn-send" id="btn-add-contrato" onclick="adicionarContratoUI()">+ Adicionar contrato</button>
+          <span class="upload-status" id="contrato-status"></span>
+        </div>
+      </div>
+      <table>
+        <colgroup>
+          <col class="col-chave"><col class="col-fornecedor"><col class="col-fornecedor">
+          <col class="col-num"><col class="col-num"><col class="col-fornecedor"><col class="col-status">
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="left">Nº Compromisso</th>
+            <th class="left">Produtor</th>
+            <th class="left">Propriedade/Origem</th>
+            <th>Data<br>Contrato</th>
+            <th>Qtd<br>Contratada</th>
+            <th class="left">Observação</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${linhasHtml || `<tr><td colspan="7" class="state">Nenhum contrato cadastrado ainda.</td></tr>`}</tbody>
+        <tfoot>
+          <tr>
+            <td class="left">TOTAL — ${linhas.length} contrato(s)</td>
+            <td colspan="2"></td>
+            <td>${fmt(totalGeral)}</td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+      </table>`;
+  }
+
   function render(){
     if(!dadosCompletos) return;
     const termo = document.getElementById("search").value.trim();
+
+    if(abaAtiva === "contratos"){
+      document.getElementById("filtro-status").style.display = "none";
+      document.querySelector(".legend").style.display = "none";
+      document.getElementById("pdf-row").style.display = "none";
+      let linhas = (dadosCompletos.contratos) || [];
+      if(termo){
+        const t = termo.toLowerCase();
+        linhas = linhas.filter(c => String(c.compromisso).toLowerCase().includes(t) || String(c.produtor||'').toLowerCase().includes(t));
+      }
+      linhas = [...linhas].sort((a,b) => Number(a.compromisso) - Number(b.compromisso));
+      document.getElementById("content").innerHTML = renderContratos(linhas);
+      return;
+    }
+
+    document.getElementById("pdf-row").style.display = "";
 
     if(abaAtiva === "status-desmama"){
       document.getElementById("filtro-status").style.display = "none";
@@ -494,6 +593,79 @@
     const status = document.getElementById("filtro-status").value;
     const linhasFiltradas = ordenarLinhas(aplicarFiltro(bloco.linhas || [], termo, abaAtiva, status));
     document.getElementById("content").innerHTML = renderTabela(linhasFiltradas, abaAtiva);
+  }
+
+  async function adicionarContratoUI(){
+    const btn = document.getElementById("btn-add-contrato");
+    const status = document.getElementById("contrato-status");
+    const compromisso = document.getElementById("nc-compromisso").value.trim();
+    if(!compromisso){
+      status.className = "upload-status erro";
+      status.textContent = "Informe o Nº do compromisso.";
+      return;
+    }
+    btn.disabled = true;
+    status.className = "upload-status";
+    status.textContent = "Salvando…";
+    try{
+      const resp = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          acao: "add_contrato",
+          compromisso,
+          produtor: document.getElementById("nc-produtor").value.trim(),
+          propriedade: document.getElementById("nc-propriedade").value.trim(),
+          dataContrato: document.getElementById("nc-data").value,
+          quantidade: document.getElementById("nc-quantidade").value,
+          observacao: document.getElementById("nc-obs").value.trim(),
+        }),
+      });
+      const resultado = await resp.json();
+      if(!resultado.ok) throw new Error(resultado.erro || "Erro desconhecido.");
+      ["nc-compromisso","nc-produtor","nc-propriedade","nc-data","nc-quantidade","nc-obs"].forEach(id => document.getElementById(id).value = "");
+      status.className = "upload-status ok";
+      status.textContent = "✓ Contrato adicionado.";
+      await carregar();
+    }catch(err){
+      status.className = "upload-status erro";
+      status.textContent = "Falhou: " + err.message;
+    }finally{
+      btn.disabled = false;
+    }
+  }
+
+  async function editarContrato(linha, campo, valor){
+    try{
+      const resp = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ acao: "update_contrato_campo", linha, campo, valor }),
+      });
+      const resultado = await resp.json();
+      if(!resultado.ok) throw new Error(resultado.erro || "Erro desconhecido.");
+      await carregar();
+    }catch(err){
+      const status = document.getElementById("contrato-status");
+      if(status){ status.className = "upload-status erro"; status.textContent = "Falhou ao salvar: " + err.message; }
+    }
+  }
+
+  async function excluirContratoUI(linha){
+    if(!confirm("Excluir este contrato?")) return;
+    try{
+      const resp = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ acao: "del_contrato", linha }),
+      });
+      const resultado = await resp.json();
+      if(!resultado.ok) throw new Error(resultado.erro || "Erro desconhecido.");
+      await carregar();
+    }catch(err){
+      const status = document.getElementById("contrato-status");
+      if(status){ status.className = "upload-status erro"; status.textContent = "Falhou ao excluir: " + err.message; }
+    }
   }
 
   function atualizarMeta(){
