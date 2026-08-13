@@ -757,6 +757,13 @@
   }
 
   async function alternarStatusDesmamaUI(linha, campo){
+    // Atualização otimista: já muda o badge na tela na hora do clique,
+    // sem esperar a resposta do servidor — só reverte se der erro.
+    const linhaObj = dadosCompletos.statusDesmama && dadosCompletos.statusDesmama.linhas.find(l => l.linha === linha);
+    const valorAnterior = linhaObj ? linhaObj[campo] : undefined;
+    if(linhaObj) linhaObj[campo] = !valorAnterior;
+    render();
+
     try{
       const resp = await fetch(API_URL, {
         method: "POST",
@@ -765,8 +772,11 @@
       });
       const resultado = await resp.json();
       if(!resultado.ok) throw new Error(resultado.erro || "Erro desconhecido.");
-      await carregar();
+      // Confirma com os dados de verdade do servidor em segundo plano (sem travar a tela)
+      carregar();
     }catch(err){
+      if(linhaObj) linhaObj[campo] = valorAnterior; // reverte
+      render();
       alert("Falhou ao atualizar: " + err.message);
     }
   }
