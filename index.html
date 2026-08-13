@@ -193,6 +193,7 @@
   tbody td{
     padding:10px 12px; border-bottom:1px solid var(--line-soft); color:var(--text);
     white-space:nowrap; font-variant-numeric:tabular-nums; text-align:center;
+    overflow:hidden; text-overflow:ellipsis;
   }
   tbody tr:last-child td{ border-bottom:none; }
   tbody tr:hover{ background:rgba(255,255,255,0.02); }
@@ -203,6 +204,11 @@
     letter-spacing:.3px; text-transform:uppercase;
     padding:4px 10px; border-radius:999px; border:1px solid transparent;
   }
+  button.badge{
+    font-family:inherit; cursor:pointer; transition:transform .1s, filter .15s;
+  }
+  button.badge:hover{ filter:brightness(1.25); }
+  button.badge:active{ transform:scale(0.96); }
   .badge.completo{ color:var(--green-accent); border-color:rgba(126,168,111,.4); background:var(--green-soft); }
   .badge.andamento{ color:var(--gold); border-color:rgba(201,151,63,.4); background:var(--gold-soft); }
   .badge.seminfo{ color:var(--rust); border-color:rgba(181,83,58,.4); background:var(--rust-soft); }
