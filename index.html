@@ -791,7 +791,7 @@
 
   async function carregar(){
     try{
-      const resp = await fetch(API_URL);
+      const resp = await fetch(API_URL, { cache: "no-store" });
       if(!resp.ok) throw new Error("HTTP " + resp.status);
       dadosCompletos = await resp.json();
       atualizarMeta();
