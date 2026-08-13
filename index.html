@@ -282,6 +282,7 @@
 
   <nav class="tabs">
     <button class="tab active" data-tab="entrada">Entrada Compra</button>
+    <button class="tab" data-tab="entrada-dia">Entrada por Dia</button>
     <button class="tab" data-tab="status-desmama">Status Desmama</button>
     <button class="tab" data-tab="contratos">Contratos</button>
   </nav>
@@ -296,6 +297,7 @@
         <option value="NAO_INICIADO">Não iniciado</option>
         <option value="SEM_INFO">Sem info de contrato</option>
       </select>
+      <input class="search" id="filtro-data-dia" type="date" style="min-width:160px; display:none;">
     </div>
     <div class="legend">
       <span><span class="dot" style="background:var(--green-accent)"></span>Completo</span>
@@ -453,6 +455,59 @@
     return resultado;
   }
 
+  function renderEntradaPorDia(linhas){
+    if(!linhas || linhas.length === 0){
+      return `<div class="state">Nenhuma carga encontrada nesse dia.</div>`;
+    }
+    const linhasHtml = linhas.map(l => `
+        <tr>
+          <td>${l.horario || "—"}</td>
+          <td>${l.compromisso || "—"}</td>
+          <td class="left">${l.produtor || "—"}</td>
+          <td class="left">${l.municipio || "—"}</td>
+          <td>${fmt(l.qtdAnimais)}</td>
+          <td>${l.pesoCab ? l.pesoCab.toLocaleString("pt-BR",{maximumFractionDigits:1}) + " kg" : "—"}</td>
+          <td>${l.arrobaCab ? l.arrobaCab.toLocaleString("pt-BR",{maximumFractionDigits:2}) + " @" : "—"}</td>
+          <td class="left">${l.ocorrencia || "—"}</td>
+        </tr>`).join("");
+
+    const totalAnimais = linhas.reduce((s,l) => s + (l.qtdAnimais||0), 0);
+
+    return `
+      <table>
+        <colgroup>
+          <col class="col-num">
+          <col class="col-num">
+          <col class="col-fornecedor">
+          <col class="col-fornecedor">
+          <col class="col-num">
+          <col class="col-num">
+          <col class="col-num">
+          <col class="col-fornecedor">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Horário</th>
+            <th>Compromisso</th>
+            <th class="left">Produtor</th>
+            <th class="left">Município</th>
+            <th>Qtd<br>Animais</th>
+            <th>Peso/Cab</th>
+            <th>@/Cab</th>
+            <th class="left">Ocorrência</th>
+          </tr>
+        </thead>
+        <tbody>${linhasHtml}</tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4" class="left">TOTAL — ${linhas.length} carga(s)</td>
+            <td>${fmt(totalAnimais)}</td>
+            <td colspan="3"></td>
+          </tr>
+        </tfoot>
+      </table>`;
+  }
+
   function checkToggle(linha, campo, ok){
     return `<button class="badge ${ok?'completo':'seminfo'}" onclick="alternarStatusDesmamaUI(${linha},'${campo}')" title="Clique para alternar">${ok?'✓ OK':'✗ Pendente'}</button>`;
   }
@@ -571,6 +626,7 @@
 
     if(abaAtiva === "contratos"){
       document.getElementById("filtro-status").style.display = "none";
+      document.getElementById("filtro-data-dia").style.display = "none";
       document.querySelector(".legend").style.display = "none";
       document.getElementById("pdf-row").style.display = "none";
       let linhas = (dadosCompletos.contratos) || [];
@@ -585,8 +641,24 @@
 
     document.getElementById("pdf-row").style.display = "";
 
+    if(abaAtiva === "entrada-dia"){
+      document.getElementById("filtro-status").style.display = "none";
+      document.getElementById("filtro-data-dia").style.display = "";
+      document.querySelector(".legend").style.display = "none";
+      const dataDia = document.getElementById("filtro-data-dia").value;
+      let linhas = (dadosCompletos.entradaPorDia && dadosCompletos.entradaPorDia.linhas) || [];
+      if(dataDia) linhas = linhas.filter(l => l.data === dataDia);
+      if(termo){
+        const t = termo.toLowerCase();
+        linhas = linhas.filter(l => String(l.produtor||'').toLowerCase().includes(t) || String(l.municipio||'').toLowerCase().includes(t) || String(l.compromisso||'').toLowerCase().includes(t));
+      }
+      document.getElementById("content").innerHTML = renderEntradaPorDia(linhas);
+      return;
+    }
+
     if(abaAtiva === "status-desmama"){
       document.getElementById("filtro-status").style.display = "none";
+      document.getElementById("filtro-data-dia").style.display = "none";
       document.querySelector(".legend").style.display = "none";
       let linhas = (dadosCompletos.statusDesmama && dadosCompletos.statusDesmama.linhas) || [];
       if(termo){
@@ -598,6 +670,7 @@
     }
 
     document.getElementById("filtro-status").style.display = "";
+    document.getElementById("filtro-data-dia").style.display = "none";
     document.querySelector(".legend").style.display = "";
     const bloco = dadosCompletos.entradaCompra;
     const status = document.getElementById("filtro-status").value;
@@ -701,6 +774,14 @@
     auto.textContent = dadosCompletos.ultimaImportacaoAutomatica
       ? new Date(dadosCompletos.ultimaImportacaoAutomatica).toLocaleString("pt-BR")
       : "ainda não rodou";
+
+    // Só define a data padrão do filtro "Entrada por Dia" uma vez (na primeira carga),
+    // pra não sobrescrever o que o usuário já tiver escolhido depois.
+    const filtroData = document.getElementById("filtro-data-dia");
+    if(filtroData && !filtroData.value){
+      const linhasDia = (dadosCompletos.entradaPorDia && dadosCompletos.entradaPorDia.linhas) || [];
+      if(linhasDia.length > 0) filtroData.value = linhasDia[linhasDia.length - 1].data;
+    }
   }
 
   async function carregar(){
@@ -730,6 +811,7 @@
 
   document.getElementById("search").addEventListener("input", render);
   document.getElementById("filtro-status").addEventListener("change", render);
+  document.getElementById("filtro-data-dia").addEventListener("change", render);
 
   document.getElementById("toggle-upload").addEventListener("click", (e) => {
     e.stopPropagation();
@@ -942,6 +1024,68 @@
 
         const dataStr = new Date().toISOString().slice(0,10);
         doc.save(`status-desmama-gta-${dataStr}.pdf`);
+        status.className = "upload-status ok";
+        status.textContent = "✓ PDF gerado com sucesso.";
+        btn.disabled = false;
+        btn.textContent = textoOriginal;
+        return;
+      }
+
+      if(abaAtiva === "entrada-dia"){
+        desenharCabecalhoRodapePdf(doc, W, H, headerH);
+        let y = headerH + 12;
+        const dataDia = document.getElementById("filtro-data-dia").value;
+        doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(15,15,15);
+        doc.text('Entrada por Dia' + (dataDia ? ' — ' + fmtData(dataDia) : ''), margin, y);
+        y += 5;
+        if(termoAtivo){
+          doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(150,120,50);
+          doc.text('Filtro aplicado — busca: "' + termoAtivo + '"', margin, y);
+          y += 5;
+        }
+        y += 1;
+
+        let linhasDia = (dadosCompletos.entradaPorDia && dadosCompletos.entradaPorDia.linhas) || [];
+        if(dataDia) linhasDia = linhasDia.filter(l => l.data === dataDia);
+        if(termoAtivo){
+          const t = termoAtivo.toLowerCase();
+          linhasDia = linhasDia.filter(l => String(l.produtor||'').toLowerCase().includes(t) || String(l.municipio||'').toLowerCase().includes(t) || String(l.compromisso||'').toLowerCase().includes(t));
+        }
+
+        const head = [["Horário", "Compromisso", "Produtor", "Município", "Qtd Animais", "Peso/Cab", "@/Cab", "Ocorrência"]];
+        const body = linhasDia.map(l => [
+          l.horario || "—",
+          l.compromisso || "—",
+          l.produtor || "—",
+          l.municipio || "—",
+          fmt(l.qtdAnimais),
+          l.pesoCab ? l.pesoCab.toLocaleString("pt-BR",{maximumFractionDigits:1}) + " kg" : "—",
+          l.arrobaCab ? l.arrobaCab.toLocaleString("pt-BR",{maximumFractionDigits:2}) + " @" : "—",
+          l.ocorrencia || "—",
+        ]);
+        const totalRow = ["TOTAL — " + linhasDia.length + " carga(s)", "", "", "", fmt(linhasDia.reduce((s,l)=>s+(l.qtdAnimais||0),0)), "", "", ""];
+        body.push(totalRow);
+
+        doc.autoTable({
+          head, body,
+          startY: y,
+          margin: { top: headerH + 4, left: margin, right: margin, bottom: 10 },
+          theme: 'grid',
+          styles: { fontSize: 8, textColor: [40,40,40], cellPadding: 2, halign: 'center' },
+          columnStyles: { 1: { halign:'left' }, 2: { halign:'left' }, 3: { halign:'left' }, 7: { halign:'left' } },
+          headStyles: { fillColor: [33,54,42], textColor: [201,151,63], fontStyle:'bold', fontSize: 7.5 },
+          alternateRowStyles: { fillColor: [246,247,244] },
+          didDrawPage: () => desenharCabecalhoRodapePdf(doc, W, H, headerH),
+          didParseCell: (data) => {
+            if(data.row.index === body.length - 1){
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.fillColor = [230, 223, 200];
+            }
+          }
+        });
+
+        const dataStrArq = (dataDia || new Date().toISOString().slice(0,10));
+        doc.save(`entrada-por-dia-${dataStrArq}.pdf`);
         status.className = "upload-status ok";
         status.textContent = "✓ PDF gerado com sucesso.";
         btn.disabled = false;
