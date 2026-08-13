@@ -276,7 +276,7 @@
 
   <nav class="tabs">
     <button class="tab active" data-tab="entrada">Entrada Compra</button>
-    <button class="tab" data-tab="status-desmama">Status Desmama (GTA)</button>
+    <button class="tab" data-tab="status-desmama">Status Desmama</button>
     <button class="tab" data-tab="contratos">Contratos</button>
   </nav>
 
@@ -447,31 +447,33 @@
     return resultado;
   }
 
-  function checkBadge(ok){
-    return ok
-      ? `<span class="badge completo">✓ OK</span>`
-      : `<span class="badge seminfo">✗ Pendente</span>`;
+  function checkToggle(linha, campo, ok){
+    return `<button class="badge ${ok?'completo':'seminfo'}" onclick="alternarStatusDesmamaUI(${linha},'${campo}')" title="Clique para alternar">${ok?'✓ OK':'✗ Pendente'}</button>`;
   }
 
   function renderStatusDesmama(linhas){
     if(!linhas || linhas.length === 0){
-      return `<div class="state">Nenhum GTA encontrado.</div>`;
+      return `<div class="state">Nenhuma carga de desmama encontrada.</div>`;
     }
     const linhasHtml = linhas.map(l => `
         <tr>
-          <td class="left">${l.gta}</td>
+          <td>${fmtData(l.data)}</td>
+          <td class="left">${l.placa || "—"}</td>
+          <td class="left">${l.fornecedor || "—"}</td>
+          <td class="left">${l.retiro || "—"}</td>
           <td>${fmt(l.qtdAnimais)}</td>
-          <td>${fmtData(l.dataEntrada)}</td>
-          <td>${checkBadge(l.fichaSanitaria)}</td>
-          <td>${checkBadge(l.corporate)}</td>
-          <td>${checkBadge(l.certificadora)}</td>
+          <td>${checkToggle(l.linha, 'fichaSanitaria', l.fichaSanitaria)}</td>
+          <td>${checkToggle(l.linha, 'corporate', l.corporate)}</td>
+          <td>${checkToggle(l.linha, 'certificadora', l.certificadora)}</td>
         </tr>`).join("");
 
     return `
       <table>
         <colgroup>
-          <col class="col-chave">
           <col class="col-num">
+          <col class="col-chave">
+          <col class="col-fornecedor">
+          <col class="col-fornecedor">
           <col class="col-num">
           <col class="col-status">
           <col class="col-status">
@@ -479,9 +481,11 @@
         </colgroup>
         <thead>
           <tr>
-            <th class="left">GTA</th>
+            <th>Data</th>
+            <th class="left">Placa</th>
+            <th class="left">Fornecedor</th>
+            <th class="left">Retiro</th>
             <th>Qtd<br>Animais</th>
-            <th>Data<br>Entrada</th>
             <th>Ficha<br>Sanitária</th>
             <th>Corporate</th>
             <th>Certificadora</th>
@@ -490,9 +494,9 @@
         <tbody>${linhasHtml}</tbody>
         <tfoot>
           <tr>
-            <td class="left">TOTAL — ${linhas.length} GTA(s)</td>
+            <td class="left" colspan="4">TOTAL — ${linhas.length} carga(s)</td>
             <td>${fmt(linhas.reduce((s,l) => s + (l.qtdAnimais||0), 0))}</td>
-            <td colspan="4"></td>
+            <td colspan="3"></td>
           </tr>
         </tfoot>
       </table>`;
@@ -581,7 +585,7 @@
       let linhas = (dadosCompletos.statusDesmama && dadosCompletos.statusDesmama.linhas) || [];
       if(termo){
         const t = termo.toLowerCase();
-        linhas = linhas.filter(l => String(l.gta).toLowerCase().includes(t));
+        linhas = linhas.filter(l => String(l.placa||'').toLowerCase().includes(t) || String(l.fornecedor||'').toLowerCase().includes(t));
       }
       document.getElementById("content").innerHTML = renderStatusDesmama(linhas);
       return;
@@ -589,7 +593,7 @@
 
     document.getElementById("filtro-status").style.display = "";
     document.querySelector(".legend").style.display = "";
-    const bloco = abaAtiva === "entrada" ? dadosCompletos.entradaCompra : dadosCompletos.desmama;
+    const bloco = dadosCompletos.entradaCompra;
     const status = document.getElementById("filtro-status").value;
     const linhasFiltradas = ordenarLinhas(aplicarFiltro(bloco.linhas || [], termo, abaAtiva, status));
     document.getElementById("content").innerHTML = renderTabela(linhasFiltradas, abaAtiva);
@@ -665,6 +669,21 @@
     }catch(err){
       const status = document.getElementById("contrato-status");
       if(status){ status.className = "upload-status erro"; status.textContent = "Falhou ao excluir: " + err.message; }
+    }
+  }
+
+  async function alternarStatusDesmamaUI(linha, campo){
+    try{
+      const resp = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ acao: "toggle_status_desmama", linha, campo }),
+      });
+      const resultado = await resp.json();
+      if(!resultado.ok) throw new Error(resultado.erro || "Erro desconhecido.");
+      await carregar();
+    }catch(err){
+      alert("Falhou ao atualizar: " + err.message);
     }
   }
 
@@ -830,7 +849,7 @@
         desenharCabecalhoRodapePdf(doc, W, H, headerH);
         let y = headerH + 12;
         doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(15,15,15);
-        doc.text('Status Desmama (GTA)', margin, y);
+        doc.text('Status Desmama', margin, y);
         y += 5;
         if(termoAtivo){
           doc.setFont('helvetica','italic'); doc.setFontSize(8); doc.setTextColor(150,120,50);
@@ -839,22 +858,24 @@
         }
         y += 1;
 
-        let linhasGta = (dadosCompletos.statusDesmama && dadosCompletos.statusDesmama.linhas) || [];
+        let linhasDm = (dadosCompletos.statusDesmama && dadosCompletos.statusDesmama.linhas) || [];
         if(termoAtivo){
           const t = termoAtivo.toLowerCase();
-          linhasGta = linhasGta.filter(l => String(l.gta).toLowerCase().includes(t));
+          linhasDm = linhasDm.filter(l => String(l.placa||'').toLowerCase().includes(t) || String(l.fornecedor||'').toLowerCase().includes(t));
         }
 
-        const head = [["GTA", "Qtd Animais", "Data Entrada", "Ficha Sanitária", "Corporate", "Certificadora"]];
-        const body = linhasGta.map(l => [
-          String(l.gta),
+        const head = [["Data", "Placa", "Fornecedor", "Retiro", "Qtd Animais", "Ficha Sanitária", "Corporate", "Certificadora"]];
+        const body = linhasDm.map(l => [
+          fmtData(l.data),
+          l.placa || "—",
+          l.fornecedor || "—",
+          l.retiro || "—",
           fmt(l.qtdAnimais),
-          fmtData(l.dataEntrada),
           l.fichaSanitaria ? "OK" : "Pendente",
           l.corporate ? "OK" : "Pendente",
           l.certificadora ? "OK" : "Pendente",
         ]);
-        const totalRow = ["TOTAL — " + linhasGta.length + " GTA(s)", fmt(linhasGta.reduce((s,l)=>s+(l.qtdAnimais||0),0)), "", "", "", ""];
+        const totalRow = ["TOTAL — " + linhasDm.length + " carga(s)", "", "", "", fmt(linhasDm.reduce((s,l)=>s+(l.qtdAnimais||0),0)), "", "", ""];
         body.push(totalRow);
 
         doc.autoTable({
@@ -863,7 +884,7 @@
           margin: { top: headerH + 4, left: margin, right: margin, bottom: 10 },
           theme: 'grid',
           styles: { fontSize: 8, textColor: [40,40,40], cellPadding: 2, halign: 'center' },
-          columnStyles: { 0: { halign:'left' } },
+          columnStyles: { 0: { halign:'left' }, 1: { halign:'left' }, 2: { halign:'left' } },
           headStyles: { fillColor: [33,54,42], textColor: [201,151,63], fontStyle:'bold', fontSize: 7.5 },
           alternateRowStyles: { fillColor: [246,247,244] },
           didDrawPage: () => desenharCabecalhoRodapePdf(doc, W, H, headerH),
