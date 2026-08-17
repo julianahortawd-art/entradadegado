@@ -390,9 +390,17 @@
       return `${String(hh).padStart(2,"0")}:${mm}`;
     }
 
-    // Formato ISO completo (ex: 1899-12-30T14:30:00.000Z)
-    const isoMatch = s.match(/T(\d{2}):(\d{2})/);
-    if(isoMatch) return `${isoMatch[1]}:${isoMatch[2]}`;
+    // Formato ISO completo — provavelmente um objeto Date serializado pelo Apps Script
+    // (ex: "1899-12-30T12:23:00.000Z"). NÃO usamos new Date(...).getHours() aqui porque,
+    // para a data-base 30/12/1899 que o Google Sheets usa em horários, o fuso
+    // "America/Sao_Paulo" tem um deslocamento histórico torto (-3h06min, não -3h certinho),
+    // o que gera minutos errados. Em vez disso, extraímos a hora em UTC e aplicamos
+    // manualmente o deslocamento fixo de Brasília (-3h, sem horário de verão desde 2019).
+    const isoMatch = s.match(/^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})/);
+    if(isoMatch){
+      let hh = (parseInt(isoMatch[1], 10) - 3 + 24) % 24;
+      return `${String(hh).padStart(2,"0")}:${isoMatch[2]}`;
+    }
 
     // Formato já em 24h "HH:MM" ou "HH:MM:SS"
     const hmsMatch = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
