@@ -246,6 +246,12 @@
   tbody tr:hover{ background:#F3F3EF; }
   td.fornecedor{ color:var(--text-dim); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; }
 
+  td.ocorrencia-cell{ cursor:pointer; max-width:220px; }
+  td.ocorrencia-cell.expandida{
+    white-space:normal !important; overflow:visible !important; text-overflow:clip !important;
+    max-width:340px; word-break:break-word; text-align:left !important; background:var(--gold-soft);
+  }
+
   .badge{
     display:inline-flex; align-items:center; gap:6px; font-size:.56rem; font-weight:700;
     letter-spacing:.07em; text-transform:uppercase;
@@ -443,6 +449,13 @@
 
   // Espelha a normalização feita no backend: "123/1", "123/2" contam como
   // o mesmo compromisso "123" (entregas parciais).
+  // Alguns textos de ocorrência são longos e ficam cortados na tabela.
+  // Clicar na célula expande o texto todo (clicar de novo recolhe).
+  // O atributo title já mostra o texto completo passando o mouse por cima.
+  function toggleOcorrencia(el){
+    el.classList.toggle("expandida");
+  }
+
   const normalizarCompromisso = v => String(v ?? "").trim().replace(/\s*\/\s*\d+\s*$/, "").trim();
 
   const STATUS_LABEL = {
@@ -592,7 +605,7 @@
           <td>${fmt(l.qtdAnimais)}</td>
           <td>${l.pesoCab ? l.pesoCab.toLocaleString("pt-BR",{maximumFractionDigits:1}) + " kg" : "—"}</td>
           <td>${l.arrobaCab ? l.arrobaCab.toLocaleString("pt-BR",{maximumFractionDigits:2}) + " @" : "—"}</td>
-          <td class="left">${l.ocorrencia || "—"}</td>
+          <td class="left ocorrencia-cell" title="${(l.ocorrencia||'').replace(/"/g,'&quot;')}" onclick="toggleOcorrencia(this)">${l.ocorrencia || "—"}</td>
         </tr>`).join("");
 
     const totalAnimais = linhas.reduce((s,l) => s + (l.qtdAnimais||0), 0);
@@ -656,7 +669,7 @@
           <td>${l.gta || "—"}</td>
           <td>${fmt(l.qtdAnimais)}</td>
           <td>${l.pesoCab ? l.pesoCab.toLocaleString("pt-BR",{maximumFractionDigits:1}) + " kg" : "—"}</td>
-          <td class="left">${l.ocorrencia || "—"}</td>
+          <td class="left ocorrencia-cell" title="${(l.ocorrencia||'').replace(/"/g,'&quot;')}" onclick="toggleOcorrencia(this)">${l.ocorrencia || "—"}</td>
         </tr>`).join("");
 
     const totalAnimais = lancamentos.reduce((s,l) => s + (l.qtdAnimais||0), 0);
