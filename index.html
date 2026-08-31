@@ -57,6 +57,38 @@
     background:var(--bg-panel); border:1px solid var(--line); border-radius:var(--radius);
     padding:16px 18px; box-shadow:var(--shadow);
   }
+
+  /* Modal de detalhe do contrato/compromisso */
+  tr.row-clicavel{ cursor:pointer; transition:background-color .12s; }
+  tr.row-clicavel:hover{ background-color:var(--gold-soft); }
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(20,20,15,.45); z-index:100;
+    display:flex; align-items:flex-start; justify-content:center;
+    padding:40px 20px; overflow-y:auto;
+  }
+  .modal-box{
+    background:var(--bg-panel); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); width:100%; max-width:960px; padding:26px 28px 22px;
+    animation:modalIn .15s ease-out;
+  }
+  @keyframes modalIn{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:translateY(0); } }
+  .modal-header{
+    display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+    border-bottom:1.5px solid var(--text); padding-bottom:14px; margin-bottom:16px;
+  }
+  .modal-title{ font-family:var(--font-display); font-size:20px; letter-spacing:.02em; margin:0 0 6px; }
+  .modal-close{
+    background:none; border:1px solid var(--line); border-radius:999px; width:30px; height:30px;
+    font-size:16px; line-height:1; color:var(--text-dim); cursor:pointer; flex-shrink:0;
+  }
+  .modal-close:hover{ border-color:var(--gold); color:var(--gold); }
+  .modal-summary{
+    display:flex; gap:22px; flex-wrap:wrap; justify-content:center; margin-bottom:18px;
+    padding:14px 18px; background:var(--bg-panel-raised); border:1px solid var(--line-soft);
+    border-radius:var(--radius);
+  }
+  .modal-summary .info-item{ min-width:100px; }
+  .modal-scroll{ max-width:100%; overflow-x:auto; }
   .hero{ text-align:center; max-width:720px; margin:6px auto 26px; border-bottom:1.5px solid var(--text); padding-bottom:22px; }
   .hero-logo{ height:96px; width:auto; margin-bottom:16px; }
   .hero .eyebrow{ justify-content:center; }
@@ -409,6 +441,10 @@
     return s;
   };
 
+  // Espelha a normalização feita no backend: "123/1", "123/2" contam como
+  // o mesmo compromisso "123" (entregas parciais).
+  const normalizarCompromisso = v => String(v ?? "").trim().replace(/\s*\/\s*\d+\s*$/, "").trim();
+
   const STATUS_LABEL = {
     COMPLETO: ["completo","Completo"],
     EM_ANDAMENTO: ["andamento","Em andamento"],
@@ -446,8 +482,9 @@
     const linhasHtml = linhas.map(l => {
       const chave = tipo === "entrada" ? l.compromisso : l.chave;
       const origem = tipo === "entrada" ? l.fornecedor : l.origem;
+      const clique = tipo === "entrada" ? `onclick="abrirDetalheContrato('${String(chave).replace(/'/g,"\\'")}')"` : "";
       return `
-        <tr>
+        <tr class="${tipo === "entrada" ? "row-clicavel" : ""}" ${clique} title="${tipo === "entrada" ? "Clique para ver os lançamentos deste compromisso" : ""}">
           <td class="left">${chave}</td>
           <td class="fornecedor left" title="${origem||''}">${origem || "—"}</td>
           <td>${fmt(l.contratado)}</td>
@@ -594,6 +631,98 @@
         </tfoot>
       </table>`;
   }
+
+  // Abre o modal com todos os lançamentos de entrada (datas, ocorrências etc.)
+  // que pertencem a um compromisso — agrupando "123/1", "123/2" etc. como
+  // o mesmo compromisso "123".
+  function abrirDetalheContrato(compromisso){
+    if(!dadosCompletos) return;
+    const alvo = normalizarCompromisso(compromisso);
+
+    const resumo = (dadosCompletos.entradaCompra?.linhas || []).find(l => normalizarCompromisso(l.compromisso) === alvo);
+    const lancamentos = (dadosCompletos.entradaPorDia?.linhas || [])
+      .filter(l => normalizarCompromisso(l.compromisso) === alvo)
+      .sort((a,b) => a.data.localeCompare(b.data) || a.horario.localeCompare(b.horario));
+
+    const linhasHtml = lancamentos.length === 0
+      ? `<tr><td colspan="9" class="state" style="padding:24px;">Nenhum lançamento de entrada encontrado para este compromisso.</td></tr>`
+      : lancamentos.map(l => `
+        <tr>
+          <td>${fmtData(l.data)}</td>
+          <td>${fmtHorario(l.horario)}</td>
+          <td class="left">${l.produtor || "—"}</td>
+          <td class="left">${l.municipio || "—"}</td>
+          <td>${l.placa || "—"}</td>
+          <td>${l.gta || "—"}</td>
+          <td>${fmt(l.qtdAnimais)}</td>
+          <td>${l.pesoCab ? l.pesoCab.toLocaleString("pt-BR",{maximumFractionDigits:1}) + " kg" : "—"}</td>
+          <td class="left">${l.ocorrencia || "—"}</td>
+        </tr>`).join("");
+
+    const totalAnimais = lancamentos.reduce((s,l) => s + (l.qtdAnimais||0), 0);
+
+    const html = `
+      <div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this) fecharDetalheContrato()">
+        <div class="modal-box" role="dialog" aria-modal="true">
+          <div class="modal-header">
+            <div>
+              <h3 class="modal-title">Compromisso ${alvo}</h3>
+              <div style="color:var(--text-dim); font-size:13px;">${resumo?.fornecedor || "Fornecedor não identificado"}</div>
+            </div>
+            <button class="modal-close" onclick="fecharDetalheContrato()" aria-label="Fechar">✕</button>
+          </div>
+
+          ${resumo ? `
+          <div class="modal-summary">
+            <div class="info-item"><span class="info-label">Contratado</span><span class="info-value">${fmt(resumo.contratado)}</span></div>
+            <div class="info-divider"></div>
+            <div class="info-item"><span class="info-label">Recebido acum.</span><span class="info-value">${fmt(resumo.acumulado)}</span></div>
+            <div class="info-divider"></div>
+            <div class="info-item"><span class="info-label">Falta chegar</span><span class="info-value">${resumo.falta === null ? "SEM INFO" : fmt(resumo.falta)}</span></div>
+            <div class="info-divider"></div>
+            <div class="info-item"><span class="info-label">Status</span><span class="info-value">${STATUS_LABEL[resumo.status] ? STATUS_LABEL[resumo.status][1] : resumo.status}</span></div>
+          </div>` : ""}
+
+          <div class="modal-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Horário</th>
+                  <th class="left">Produtor</th>
+                  <th class="left">Município</th>
+                  <th>Placa</th>
+                  <th>GTA</th>
+                  <th>Qtd<br>Animais</th>
+                  <th>Peso/Cab</th>
+                  <th class="left">Ocorrência</th>
+                </tr>
+              </thead>
+              <tbody>${linhasHtml}</tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="6" class="left">TOTAL — ${lancamentos.length} lançamento(s)</td>
+                  <td>${fmt(totalAnimais)}</td>
+                  <td colspan="2"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>`;
+
+    document.getElementById("modal-detalhe-contrato").innerHTML = html;
+    document.body.style.overflow = "hidden";
+  }
+
+  function fecharDetalheContrato(){
+    document.getElementById("modal-detalhe-contrato").innerHTML = "";
+    document.body.style.overflow = "";
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if(e.key === "Escape") fecharDetalheContrato();
+  });
 
   function checkToggle(linha, campo, ok){
     return `<button class="badge ${ok?'completo':'seminfo'}" onclick="alternarStatusDesmamaUI(${linha},'${campo}')" title="Clique para alternar">${ok?'✓ OK':'✗ Pendente'}</button>`;
@@ -1290,5 +1419,6 @@
 
   carregar();
 </script>
+  <div id="modal-detalhe-contrato"></div>
 </body>
 </html>
