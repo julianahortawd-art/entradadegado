@@ -89,6 +89,25 @@
   }
   .modal-summary .info-item{ min-width:100px; }
   .modal-scroll{ max-width:100%; overflow-x:auto; }
+
+  /* Cartões de KPI (aba Acompanhamento de Contratos de Gado) */
+  .kpi-grid{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));
+    gap:14px; margin-bottom:20px;
+  }
+  .kpi-card{
+    background:var(--bg-panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px 14px; text-align:center; box-shadow:var(--shadow);
+  }
+  .kpi-label{
+    font-size:.62rem; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--text-dim); font-weight:700; margin-bottom:6px;
+  }
+  .kpi-value{ font-family:var(--font-display); font-size:1.55rem; color:var(--text); line-height:1.15; }
+  .kpi-value.gold{ color:var(--gold); }
+  .kpi-value.green{ color:var(--green-accent); }
+  .kpi-value.amber{ color:var(--amber); }
+  .kpi-sub{ font-size:11px; color:var(--text-dim); margin-top:4px; }
   .hero{ text-align:center; max-width:720px; margin:6px auto 26px; border-bottom:1.5px solid var(--text); padding-bottom:22px; }
   .hero-logo{ height:96px; width:auto; margin-bottom:16px; }
   .hero .eyebrow{ justify-content:center; }
@@ -482,6 +501,66 @@
   function fmtPeso(p){
     if(p === null || p === undefined) return "—";
     return p.toLocaleString("pt-BR", {maximumFractionDigits:1}) + " kg";
+  }
+
+  // KPIs da aba Acompanhamento de Contratos de Gado — calculados sobre as
+  // linhas já filtradas (respeitam busca, status, fornecedor, compromisso).
+  function renderKpis(linhas, dataReferencia){
+    if(!linhas || linhas.length === 0) return "";
+
+    const totalContratado = linhas.reduce((s,l) => s + (l.contratado || 0), 0);
+    const totalRecebido = linhas.reduce((s,l) => s + (l.acumulado || 0), 0);
+    const totalFalta = linhas.reduce((s,l) => s + (l.falta !== null ? l.falta : 0), 0);
+    const pctGeral = totalContratado > 0 ? (totalRecebido / totalContratado) : null;
+
+    // Peso médio ponderado geral: pondera o peso médio de cada compromisso
+    // pela quantidade recebida daquele compromisso.
+    let somaPesoPonderado = 0, somaQtdComPeso = 0;
+    linhas.forEach(l => {
+      if(l.pesoMedio && l.acumulado){
+        somaPesoPonderado += l.pesoMedio * l.acumulado;
+        somaQtdComPeso += l.acumulado;
+      }
+    });
+    const pesoMedioGeral = somaQtdComPeso > 0 ? (somaPesoPonderado / somaQtdComPeso) : null;
+
+    const totalEntradaHoje = linhas.reduce((s,l) => s + (l.entradaNoDia || 0), 0);
+
+    const pctClasse = pctGeral === null ? "" : (pctGeral >= 1 ? "green" : (pctGeral >= 0.5 ? "gold" : "amber"));
+
+    return `
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Contratado</div>
+          <div class="kpi-value">${fmt(totalContratado)}</div>
+          <div class="kpi-sub">animais</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Recebido acumulado</div>
+          <div class="kpi-value gold">${fmt(totalRecebido)}</div>
+          <div class="kpi-sub">animais</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Falta chegar</div>
+          <div class="kpi-value ${totalFalta > 0 ? "amber" : "green"}">${fmt(totalFalta)}</div>
+          <div class="kpi-sub">animais</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">% Recebido geral</div>
+          <div class="kpi-value ${pctClasse}">${pctGeral === null ? "—" : fmtPct(pctGeral)}</div>
+          <div class="kpi-sub">acumulado / contratado</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Peso médio geral</div>
+          <div class="kpi-value">${pesoMedioGeral === null ? "—" : fmtPeso(pesoMedioGeral)}</div>
+          <div class="kpi-sub">ponderado por qtd. recebida</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Entrada de hoje</div>
+          <div class="kpi-value gold">${fmt(totalEntradaHoje)}</div>
+          <div class="kpi-sub">${dataReferencia ? fmtData(dataReferencia) : "sem referência"}</div>
+        </div>
+      </div>`;
   }
 
   function renderTabela(linhas, tipo){
@@ -914,7 +993,7 @@
     const fornecedorFiltro = document.getElementById("filtro-fornecedor").value.trim();
     const compromissoFiltro = document.getElementById("filtro-compromisso").value.trim();
     const linhasFiltradas = ordenarLinhas(aplicarFiltro(bloco.linhas || [], termo, abaAtiva, status, fornecedorFiltro, compromissoFiltro));
-    document.getElementById("content").innerHTML = renderTabela(linhasFiltradas, abaAtiva);
+    document.getElementById("content").innerHTML = renderKpis(linhasFiltradas, bloco.dataReferencia) + renderTabela(linhasFiltradas, abaAtiva);
   }
 
   async function adicionarContratoUI(){
