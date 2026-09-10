@@ -584,17 +584,20 @@
   // Monta a série acumulada (soma corrida) mês a mês, a partir da "Entrada
   // por Dia", considerando só as cargas cujo compromisso está no conjunto
   // atualmente filtrado (respeita busca/status/fornecedor/compromisso).
-  function desenharGraficoAcumuladoMensal(compromissosFiltrados){
+  function desenharGraficoAcumuladoMensal(){
     const canvas = document.getElementById("chart-acumulado-mensal");
     if(!canvas || typeof Chart === "undefined") return;
 
-    const setCompromissos = new Set(compromissosFiltrados.map(c => normalizarCompromisso(c)));
+    // Considera TODAS as entradas do histórico, com ou sem compromisso
+    // vinculado — de jan/2026 até abril/2026 não existia ainda o controle
+    // por compromisso, então essas entradas só entram contadas pelo mês.
     const linhasDia = (dadosCompletos.entradaPorDia && dadosCompletos.entradaPorDia.linhas) || [];
 
     const porMes = {}; // "AAAA-MM" -> total de animais naquele mês
     linhasDia.forEach(l => {
-      if(!l.data || !setCompromissos.has(normalizarCompromisso(l.compromisso))) return;
+      if(!l.data) return;
       const mes = l.data.slice(0, 7); // "AAAA-MM"
+      if(mes < "2026-01") return;
       porMes[mes] = (porMes[mes] || 0) + (l.qtdAnimais || 0);
     });
 
@@ -669,16 +672,16 @@
     });
   }
 
-  // Fechamento mensal — desde janeiro/2026. Considera as mesmas cargas do
-  // gráfico (respeitando os filtros ativos): total de animais, nº de cargas,
-  // peso médio ponderado e @ média ponderada, mês a mês.
-  function renderFechamentoMensal(compromissosFiltrados){
-    const setCompromissos = new Set(compromissosFiltrados.map(c => normalizarCompromisso(c)));
+  // Fechamento mensal — desde janeiro/2026. Considera TODAS as entradas do
+  // histórico, com ou sem compromisso vinculado (de jan/2026 até abr/2026
+  // não existia ainda o controle por compromisso): total de animais, nº de
+  // cargas, peso médio ponderado e @ média ponderada, mês a mês.
+  function renderFechamentoMensal(){
     const linhasDia = (dadosCompletos.entradaPorDia && dadosCompletos.entradaPorDia.linhas) || [];
 
     const porMes = {};
     linhasDia.forEach(l => {
-      if(!l.data || !setCompromissos.has(normalizarCompromisso(l.compromisso))) return;
+      if(!l.data) return;
       const mes = l.data.slice(0, 7); // "AAAA-MM"
       if(mes < "2026-01") return; // só desde janeiro/2026
       if(!porMes[mes]) porMes[mes] = { totalAnimais:0, cargas:0, somaPeso:0, somaQtdPeso:0, somaArroba:0, somaQtdArroba:0 };
@@ -1185,9 +1188,9 @@
     const linhasFiltradas = ordenarLinhas(aplicarFiltro(bloco.linhas || [], termo, abaAtiva, status, fornecedorFiltro, compromissoFiltro));
     document.getElementById("content").innerHTML =
       renderKpis(linhasFiltradas, bloco.dataReferencia) +
-      renderFechamentoMensal(linhasFiltradas.map(l => l.compromisso)) +
+      renderFechamentoMensal() +
       renderTabela(linhasFiltradas, abaAtiva);
-    desenharGraficoAcumuladoMensal(linhasFiltradas.map(l => l.compromisso));
+    desenharGraficoAcumuladoMensal();
   }
 
   async function adicionarContratoUI(){
@@ -1705,12 +1708,12 @@
             }
           }
 
-          // Fechamento mensal
-          const setCompromissosPdf = new Set(linhasOrdenadas.map(l => normalizarCompromisso(l.compromisso)));
+          // Fechamento mensal — considera TODAS as entradas do histórico,
+          // com ou sem compromisso vinculado (jan-abr/2026 não tinham compromisso).
           const linhasDiaPdf = (dadosCompletos.entradaPorDia && dadosCompletos.entradaPorDia.linhas) || [];
           const porMesPdf = {};
           linhasDiaPdf.forEach(l => {
-            if(!l.data || !setCompromissosPdf.has(normalizarCompromisso(l.compromisso))) return;
+            if(!l.data) return;
             const mes = l.data.slice(0, 7);
             if(mes < "2026-01") return;
             if(!porMesPdf[mes]) porMesPdf[mes] = { totalAnimais:0, cargas:0, somaPeso:0, somaQtdPeso:0, somaArroba:0, somaQtdArroba:0 };
