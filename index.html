@@ -518,25 +518,38 @@
   // KPIs da aba Acompanhamento de Contratos de Gado — calculados sobre as
   // linhas já filtradas (respeitam busca, status, fornecedor, compromisso).
   function renderKpis(linhas, dataReferencia){
-    if(!linhas || linhas.length === 0) return "";
+    if(!dadosCompletos) return "";
 
-    const totalContratado = linhas.reduce((s,l) => s + (l.contratado || 0), 0);
-    const totalRecebido = linhas.reduce((s,l) => s + (l.acumulado || 0), 0);
-    const totalFalta = linhas.reduce((s,l) => s + (l.falta !== null ? l.falta : 0), 0);
+    const linhasDiaTodas = (dadosCompletos.entradaPorDia && dadosCompletos.entradaPorDia.linhas) || [];
+    const linhasDesdeJaneiro = linhasDiaTodas.filter(l => l.data && l.data.slice(0,7) >= "2026-01");
+
+    // Contratado: soma TODOS os contratos cadastrados (vindos da planilha
+    // do Ricardo, via CADASTRO CONTRATOS) — não só os que já têm entrada.
+    const totalContratado = (dadosCompletos.contratos || []).reduce((s,c) => s + (Number(c.quantidade) || 0), 0);
+
+    // Recebido acumulado: soma TODAS as entradas desde janeiro/2026, com
+    // ou sem compromisso vinculado (igual ao gráfico e à tabela mensal).
+    const totalRecebido = linhasDesdeJaneiro.reduce((s,l) => s + (l.qtdAnimais || 0), 0);
+
+    const totalFalta = Math.max(totalContratado - totalRecebido, 0);
     const pctGeral = totalContratado > 0 ? (totalRecebido / totalContratado) : null;
 
-    // Peso médio ponderado geral: pondera o peso médio de cada compromisso
-    // pela quantidade recebida daquele compromisso.
+    // Peso médio ponderado geral: todas as cargas desde janeiro/2026,
+    // ponderadas pela quantidade de animais de cada carga.
     let somaPesoPonderado = 0, somaQtdComPeso = 0;
-    linhas.forEach(l => {
-      if(l.pesoMedio && l.acumulado){
-        somaPesoPonderado += l.pesoMedio * l.acumulado;
-        somaQtdComPeso += l.acumulado;
+    linhasDesdeJaneiro.forEach(l => {
+      if(l.pesoCab && l.qtdAnimais){
+        somaPesoPonderado += l.pesoCab * l.qtdAnimais;
+        somaQtdComPeso += l.qtdAnimais;
       }
     });
     const pesoMedioGeral = somaQtdComPeso > 0 ? (somaPesoPonderado / somaQtdComPeso) : null;
 
-    const totalEntradaHoje = linhas.reduce((s,l) => s + (l.entradaNoDia || 0), 0);
+    // Entrada de hoje: soma TODAS as cargas do dia de referência (com ou
+    // sem compromisso vinculado).
+    const totalEntradaHoje = dataReferencia
+      ? linhasDiaTodas.filter(l => l.data === dataReferencia).reduce((s,l) => s + (l.qtdAnimais || 0), 0)
+      : 0;
 
     const pctClasse = pctGeral === null ? "" : (pctGeral >= 1 ? "green" : (pctGeral >= 0.5 ? "gold" : "amber"));
 
@@ -545,12 +558,12 @@
         <div class="kpi-card">
           <div class="kpi-label">Contratado</div>
           <div class="kpi-value">${fmt(totalContratado)}</div>
-          <div class="kpi-sub">animais</div>
+          <div class="kpi-sub">animais (todos os contratos)</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Recebido acumulado</div>
           <div class="kpi-value gold">${fmt(totalRecebido)}</div>
-          <div class="kpi-sub">animais</div>
+          <div class="kpi-sub">animais desde jan/2026</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Falta chegar</div>
@@ -1660,16 +1673,21 @@
 
         // --- Página 1: visão geral (KPIs + gráfico + fechamento mensal) ---
         if(bloco.tipo === "entrada" && linhasOrdenadas.length > 0){
-          const totalContratadoKpi = linhasOrdenadas.reduce((s,l) => s + (l.contratado || 0), 0);
-          const totalRecebidoKpi = linhasOrdenadas.reduce((s,l) => s + (l.acumulado || 0), 0);
-          const totalFaltaKpi = linhasOrdenadas.reduce((s,l) => s + (l.falta !== null ? l.falta : 0), 0);
+          const totalContratadoKpi = (dadosCompletos.contratos || []).reduce((s,c) => s + (Number(c.quantidade) || 0), 0);
+          const linhasDiaTodasKpi = (dadosCompletos.entradaPorDia && dadosCompletos.entradaPorDia.linhas) || [];
+          const linhasDesdeJaneiroKpi = linhasDiaTodasKpi.filter(l => l.data && l.data.slice(0,7) >= "2026-01");
+          const totalRecebidoKpi = linhasDesdeJaneiroKpi.reduce((s,l) => s + (l.qtdAnimais || 0), 0);
+          const totalFaltaKpi = Math.max(totalContratadoKpi - totalRecebidoKpi, 0);
           const pctGeralKpi = totalContratadoKpi > 0 ? (totalRecebidoKpi / totalContratadoKpi) : null;
           let somaPesoPondKpi = 0, somaQtdPesoKpi = 0;
-          linhasOrdenadas.forEach(l => {
-            if(l.pesoMedio && l.acumulado){ somaPesoPondKpi += l.pesoMedio * l.acumulado; somaQtdPesoKpi += l.acumulado; }
+          linhasDesdeJaneiroKpi.forEach(l => {
+            if(l.pesoCab && l.qtdAnimais){ somaPesoPondKpi += l.pesoCab * l.qtdAnimais; somaQtdPesoKpi += l.qtdAnimais; }
           });
           const pesoMedioGeralKpi = somaQtdPesoKpi > 0 ? (somaPesoPondKpi / somaQtdPesoKpi) : null;
-          const totalHojeKpi = linhasOrdenadas.reduce((s,l) => s + (l.entradaNoDia || 0), 0);
+          const dataRefKpi = dadosBloco.dataReferencia;
+          const totalHojeKpi = dataRefKpi
+            ? linhasDiaTodasKpi.filter(l => l.data === dataRefKpi).reduce((s,l) => s + (l.qtdAnimais || 0), 0)
+            : 0;
 
           // KPIs
           doc.autoTable({
