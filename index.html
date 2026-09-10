@@ -1655,7 +1655,7 @@
         const linhasOrdenadas = ordenarLinhas(aplicarFiltro(dadosBloco.linhas || [], termoAtivo, bloco.tipo, statusAtivo, fornecedorAtivo, compromissoAtivo));
         const mostrarPeso = bloco.tipo === "entrada";
 
-        // --- Resumo de KPIs (só faz sentido pro bloco de compromissos) ---
+        // --- Página 1: visão geral (KPIs + gráfico + fechamento mensal) ---
         if(bloco.tipo === "entrada" && linhasOrdenadas.length > 0){
           const totalContratadoKpi = linhasOrdenadas.reduce((s,l) => s + (l.contratado || 0), 0);
           const totalRecebidoKpi = linhasOrdenadas.reduce((s,l) => s + (l.acumulado || 0), 0);
@@ -1668,6 +1668,7 @@
           const pesoMedioGeralKpi = somaQtdPesoKpi > 0 ? (somaPesoPondKpi / somaQtdPesoKpi) : null;
           const totalHojeKpi = linhasOrdenadas.reduce((s,l) => s + (l.entradaNoDia || 0), 0);
 
+          // KPIs
           doc.autoTable({
             head: [["Contratado", "Recebido acumulado", "Falta chegar", "% Recebido geral", "Peso médio geral", "Entrada de hoje"]],
             body: [[
@@ -1685,10 +1686,105 @@
             headStyles: { fillColor: [150,37,32], textColor: [255,255,255], fontStyle:'bold', fontSize: 7.5 },
             didDrawPage: () => desenharCabecalhoRodapePdf(doc, W, H, headerH),
           });
-          y = doc.lastAutoTable.finalY + 8;
-          doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(15,15,15);
+          y = doc.lastAutoTable.finalY + 10;
+
+          // Gráfico de acumulado mensal, se estiver desenhado na tela
+          const canvasChart = document.getElementById("chart-acumulado-mensal");
+          if(canvasChart && canvasChart.width > 0){
+            try{
+              const imgData = canvasChart.toDataURL("image/png", 1.0);
+              const imgW = 273, imgH = 95;
+              if(y + imgH > H - 15){ doc.addPage(); desenharCabecalhoRodapePdf(doc, W, H, headerH); y = headerH + 14; }
+              doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(15,15,15);
+              doc.text('Acumulado de animais recebidos — mês a mês', margin, y);
+              y += 4;
+              doc.addImage(imgData, "PNG", margin, y, imgW, imgH);
+              y += imgH + 10;
+            }catch(e){
+              console.warn("Não foi possível incluir o gráfico no PDF:", e);
+            }
+          }
+
+          // Fechamento mensal
+          const setCompromissosPdf = new Set(linhasOrdenadas.map(l => normalizarCompromisso(l.compromisso)));
+          const linhasDiaPdf = (dadosCompletos.entradaPorDia && dadosCompletos.entradaPorDia.linhas) || [];
+          const porMesPdf = {};
+          linhasDiaPdf.forEach(l => {
+            if(!l.data || !setCompromissosPdf.has(normalizarCompromisso(l.compromisso))) return;
+            const mes = l.data.slice(0, 7);
+            if(mes < "2026-01") return;
+            if(!porMesPdf[mes]) porMesPdf[mes] = { totalAnimais:0, cargas:0, somaPeso:0, somaQtdPeso:0, somaArroba:0, somaQtdArroba:0 };
+            const m = porMesPdf[mes];
+            const qtd = l.qtdAnimais || 0;
+            m.totalAnimais += qtd;
+            m.cargas += 1;
+            if(l.pesoCab){ m.somaPeso += l.pesoCab * qtd; m.somaQtdPeso += qtd; }
+            if(l.arrobaCab){ m.somaArroba += l.arrobaCab * qtd; m.somaQtdArroba += qtd; }
+          });
+          const mesesPdf = Object.keys(porMesPdf).sort();
+
+          if(mesesPdf.length > 0){
+            const MESES_NOME_PDF = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+            if(y > H - 50){ doc.addPage(); desenharCabecalhoRodapePdf(doc, W, H, headerH); y = headerH + 14; }
+            doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(15,15,15);
+            doc.text('Fechamento mensal — desde janeiro/2026', margin, y);
+            y += 5;
+
+            let totalGeralAnimaisPdf = 0, totalGeralCargasPdf = 0, somaPesoGeralPdf = 0, somaQtdPesoGeralPdf = 0, somaArrobaGeralPdf = 0, somaQtdArrobaGeralPdf = 0;
+            const bodyMensal = mesesPdf.map(mes => {
+              const m = porMesPdf[mes];
+              const [ano, mm] = mes.split("-");
+              const pesoMedioM = m.somaQtdPeso > 0 ? (m.somaPeso / m.somaQtdPeso) : null;
+              const arrobaMediaM = m.somaQtdArroba > 0 ? (m.somaArroba / m.somaQtdArroba) : null;
+              totalGeralAnimaisPdf += m.totalAnimais;
+              totalGeralCargasPdf += m.cargas;
+              somaPesoGeralPdf += m.somaPeso; somaQtdPesoGeralPdf += m.somaQtdPeso;
+              somaArrobaGeralPdf += m.somaArroba; somaQtdArrobaGeralPdf += m.somaQtdArroba;
+              return [
+                `${MESES_NOME_PDF[Number(mm)-1]}/${ano}`,
+                fmt(m.totalAnimais),
+                fmt(m.cargas),
+                pesoMedioM === null ? "—" : fmtPeso(pesoMedioM),
+                arrobaMediaM === null ? "—" : arrobaMediaM.toLocaleString("pt-BR",{maximumFractionDigits:2}) + " @",
+              ];
+            });
+            const pesoMedioGeralPdf = somaQtdPesoGeralPdf > 0 ? (somaPesoGeralPdf / somaQtdPesoGeralPdf) : null;
+            const arrobaMediaGeralPdf = somaQtdArrobaGeralPdf > 0 ? (somaArrobaGeralPdf / somaQtdArrobaGeralPdf) : null;
+            bodyMensal.push([
+              "TOTAL GERAL",
+              fmt(totalGeralAnimaisPdf),
+              fmt(totalGeralCargasPdf),
+              pesoMedioGeralPdf === null ? "—" : fmtPeso(pesoMedioGeralPdf),
+              arrobaMediaGeralPdf === null ? "—" : arrobaMediaGeralPdf.toLocaleString("pt-BR",{maximumFractionDigits:2}) + " @",
+            ]);
+
+            doc.autoTable({
+              head: [["Mês", "Total Animais", "Nº Cargas", "Peso Médio", "@ Média"]],
+              body: bodyMensal,
+              startY: y,
+              margin: { top: headerH + 4, left: margin, right: margin, bottom: 10 },
+              theme: 'grid',
+              styles: { fontSize: 8, textColor: [40,40,40], cellPadding: 2, halign: 'center' },
+              columnStyles: { 0: { halign:'left' } },
+              headStyles: { fillColor: [247,245,236], textColor: [20,20,15], fontStyle:'bold', fontSize: 7.5 },
+              alternateRowStyles: { fillColor: [246,247,244] },
+              didDrawPage: () => desenharCabecalhoRodapePdf(doc, W, H, headerH),
+              didParseCell: (data) => {
+                if(data.row.index === bodyMensal.length - 1){
+                  data.cell.styles.fontStyle = 'bold';
+                  data.cell.styles.fillColor = [247, 247, 244];
+                }
+              }
+            });
+          }
+
+          // --- Página 2: detalhamento por compromisso ---
+          doc.addPage();
+          desenharCabecalhoRodapePdf(doc, W, H, headerH);
+          y = headerH + 12;
+          doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(15,15,15);
           doc.text('Detalhamento por compromisso', margin, y);
-          y += 5;
+          y += 6;
         }
 
         const chaveHeader = bloco.tipo === "entrada" ? "Nº Compromisso" : "Contrato / Chave";
@@ -1724,99 +1820,6 @@
             }
           }
         });
-
-        // --- Fechamento mensal (só faz sentido pro bloco de compromissos) ---
-        if(bloco.tipo === "entrada"){
-          const setCompromissosPdf = new Set(linhasOrdenadas.map(l => normalizarCompromisso(l.compromisso)));
-          const linhasDiaPdf = (dadosCompletos.entradaPorDia && dadosCompletos.entradaPorDia.linhas) || [];
-          const porMesPdf = {};
-          linhasDiaPdf.forEach(l => {
-            if(!l.data || !setCompromissosPdf.has(normalizarCompromisso(l.compromisso))) return;
-            const mes = l.data.slice(0, 7);
-            if(mes < "2026-01") return;
-            if(!porMesPdf[mes]) porMesPdf[mes] = { totalAnimais:0, cargas:0, somaPeso:0, somaQtdPeso:0, somaArroba:0, somaQtdArroba:0 };
-            const m = porMesPdf[mes];
-            const qtd = l.qtdAnimais || 0;
-            m.totalAnimais += qtd;
-            m.cargas += 1;
-            if(l.pesoCab){ m.somaPeso += l.pesoCab * qtd; m.somaQtdPeso += qtd; }
-            if(l.arrobaCab){ m.somaArroba += l.arrobaCab * qtd; m.somaQtdArroba += qtd; }
-          });
-          const mesesPdf = Object.keys(porMesPdf).sort();
-
-          if(mesesPdf.length > 0){
-            const MESES_NOME_PDF = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-            let yy = doc.lastAutoTable.finalY + 10;
-            if(yy > H - 50){ doc.addPage(); desenharCabecalhoRodapePdf(doc, W, H, headerH); yy = headerH + 14; }
-            doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(15,15,15);
-            doc.text('Fechamento mensal — desde janeiro/2026', margin, yy);
-            yy += 5;
-
-            let totalGeralAnimaisPdf = 0, totalGeralCargasPdf = 0, somaPesoGeralPdf = 0, somaQtdPesoGeralPdf = 0, somaArrobaGeralPdf = 0, somaQtdArrobaGeralPdf = 0;
-            const bodyMensal = mesesPdf.map(mes => {
-              const m = porMesPdf[mes];
-              const [ano, mm] = mes.split("-");
-              const pesoMedioM = m.somaQtdPeso > 0 ? (m.somaPeso / m.somaQtdPeso) : null;
-              const arrobaMediaM = m.somaQtdArroba > 0 ? (m.somaArroba / m.somaQtdArroba) : null;
-              totalGeralAnimaisPdf += m.totalAnimais;
-              totalGeralCargasPdf += m.cargas;
-              somaPesoGeralPdf += m.somaPeso; somaQtdPesoGeralPdf += m.somaQtdPeso;
-              somaArrobaGeralPdf += m.somaArroba; somaQtdArrobaGeralPdf += m.somaQtdArroba;
-              return [
-                `${MESES_NOME_PDF[Number(mm)-1]}/${ano}`,
-                fmt(m.totalAnimais),
-                fmt(m.cargas),
-                pesoMedioM === null ? "—" : fmtPeso(pesoMedioM),
-                arrobaMediaM === null ? "—" : arrobaMediaM.toLocaleString("pt-BR",{maximumFractionDigits:2}) + " @",
-              ];
-            });
-            const pesoMedioGeralPdf = somaQtdPesoGeralPdf > 0 ? (somaPesoGeralPdf / somaQtdPesoGeralPdf) : null;
-            const arrobaMediaGeralPdf = somaQtdArrobaGeralPdf > 0 ? (somaArrobaGeralPdf / somaQtdArrobaGeralPdf) : null;
-            bodyMensal.push([
-              "TOTAL GERAL",
-              fmt(totalGeralAnimaisPdf),
-              fmt(totalGeralCargasPdf),
-              pesoMedioGeralPdf === null ? "—" : fmtPeso(pesoMedioGeralPdf),
-              arrobaMediaGeralPdf === null ? "—" : arrobaMediaGeralPdf.toLocaleString("pt-BR",{maximumFractionDigits:2}) + " @",
-            ]);
-
-            doc.autoTable({
-              head: [["Mês", "Total Animais", "Nº Cargas", "Peso Médio", "@ Média"]],
-              body: bodyMensal,
-              startY: yy,
-              margin: { top: headerH + 4, left: margin, right: margin, bottom: 10 },
-              theme: 'grid',
-              styles: { fontSize: 8, textColor: [40,40,40], cellPadding: 2, halign: 'center' },
-              columnStyles: { 0: { halign:'left' } },
-              headStyles: { fillColor: [247,245,236], textColor: [20,20,15], fontStyle:'bold', fontSize: 7.5 },
-              alternateRowStyles: { fillColor: [246,247,244] },
-              didDrawPage: () => desenharCabecalhoRodapePdf(doc, W, H, headerH),
-              didParseCell: (data) => {
-                if(data.row.index === bodyMensal.length - 1){
-                  data.cell.styles.fontStyle = 'bold';
-                  data.cell.styles.fillColor = [247, 247, 244];
-                }
-              }
-            });
-          }
-
-          // --- Gráfico de acumulado mensal, se estiver desenhado na tela ---
-          const canvasChart = document.getElementById("chart-acumulado-mensal");
-          if(canvasChart && canvasChart.width > 0){
-            try{
-              const imgData = canvasChart.toDataURL("image/png", 1.0);
-              const imgW = 170, imgH = 70;
-              let yImg = doc.lastAutoTable.finalY + 10;
-              if(yImg + imgH > H - 15){ doc.addPage(); desenharCabecalhoRodapePdf(doc, W, H, headerH); yImg = headerH + 14; }
-              doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(15,15,15);
-              doc.text('Acumulado de animais recebidos — mês a mês', margin, yImg);
-              yImg += 4;
-              doc.addImage(imgData, "PNG", margin, yImg, imgW, imgH);
-            }catch(e){
-              console.warn("Não foi possível incluir o gráfico no PDF:", e);
-            }
-          }
-        }
       });
 
       const dataStr = new Date().toISOString().slice(0,10);
