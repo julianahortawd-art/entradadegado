@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <style>
   :root{
     --bg: #ECEADE;            /* paper */
@@ -108,6 +109,16 @@
   .kpi-value.green{ color:var(--green-accent); }
   .kpi-value.amber{ color:var(--amber); }
   .kpi-sub{ font-size:11px; color:var(--text-dim); margin-top:4px; }
+
+  .chart-card{
+    background:var(--bg-panel); border:1px solid var(--line); border-radius:var(--radius);
+    padding:18px 20px 12px; box-shadow:var(--shadow); margin-bottom:20px;
+  }
+  .chart-card-title{
+    font-size:.68rem; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--text-dim); font-weight:700; margin-bottom:10px; text-align:center;
+  }
+  .chart-card-canvas-wrap{ position:relative; height:220px; }
   .hero{ text-align:center; max-width:720px; margin:6px auto 26px; border-bottom:1.5px solid var(--text); padding-bottom:22px; }
   .hero-logo{ height:96px; width:auto; margin-bottom:16px; }
   .hero .eyebrow{ justify-content:center; }
@@ -560,6 +571,166 @@
           <div class="kpi-value gold">${fmt(totalEntradaHoje)}</div>
           <div class="kpi-sub">${dataReferencia ? fmtData(dataReferencia) : "sem referência"}</div>
         </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">Acumulado de animais recebidos — mês a mês</div>
+        <div class="chart-card-canvas-wrap"><canvas id="chart-acumulado-mensal"></canvas></div>
+      </div>`;
+  }
+
+  let chartAcumuladoMensal = null;
+
+  // Monta a série acumulada (soma corrida) mês a mês, a partir da "Entrada
+  // por Dia", considerando só as cargas cujo compromisso está no conjunto
+  // atualmente filtrado (respeita busca/status/fornecedor/compromisso).
+  function desenharGraficoAcumuladoMensal(compromissosFiltrados){
+    const canvas = document.getElementById("chart-acumulado-mensal");
+    if(!canvas || typeof Chart === "undefined") return;
+
+    const setCompromissos = new Set(compromissosFiltrados.map(c => normalizarCompromisso(c)));
+    const linhasDia = (dadosCompletos.entradaPorDia && dadosCompletos.entradaPorDia.linhas) || [];
+
+    const porMes = {}; // "AAAA-MM" -> total de animais naquele mês
+    linhasDia.forEach(l => {
+      if(!l.data || !setCompromissos.has(normalizarCompromisso(l.compromisso))) return;
+      const mes = l.data.slice(0, 7); // "AAAA-MM"
+      porMes[mes] = (porMes[mes] || 0) + (l.qtdAnimais || 0);
+    });
+
+    const mesesOrdenados = Object.keys(porMes).sort();
+    const MESES_ABREV = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+    const labels = mesesOrdenados.map(m => {
+      const [ano, mes] = m.split("-");
+      return `${MESES_ABREV[Number(mes)-1]}/${ano.slice(2)}`;
+    });
+
+    let corrida = 0;
+    const dadosAcumulados = mesesOrdenados.map(m => {
+      corrida += porMes[m];
+      return corrida;
+    });
+
+    if(chartAcumuladoMensal){
+      chartAcumuladoMensal.destroy();
+      chartAcumuladoMensal = null;
+    }
+    if(mesesOrdenados.length === 0) return;
+
+    chartAcumuladoMensal = new Chart(canvas.getContext("2d"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label: "Acumulado",
+          data: dadosAcumulados,
+          borderColor: "#962520",
+          backgroundColor: "rgba(150,37,32,0.08)",
+          borderWidth: 2.5,
+          pointRadius: 3.5,
+          pointBackgroundColor: "#962520",
+          tension: 0.25,
+          fill: true,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.parsed.y.toLocaleString("pt-BR")} animais (acumulado)`,
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { callback: v => v.toLocaleString("pt-BR") },
+            grid: { color: "#DEDBCC" },
+          },
+          x: { grid: { display: false } },
+        },
+      },
+    });
+  }
+
+  // Fechamento mensal — desde janeiro/2026. Considera as mesmas cargas do
+  // gráfico (respeitando os filtros ativos): total de animais, nº de cargas,
+  // peso médio ponderado e @ média ponderada, mês a mês.
+  function renderFechamentoMensal(compromissosFiltrados){
+    const setCompromissos = new Set(compromissosFiltrados.map(c => normalizarCompromisso(c)));
+    const linhasDia = (dadosCompletos.entradaPorDia && dadosCompletos.entradaPorDia.linhas) || [];
+
+    const porMes = {};
+    linhasDia.forEach(l => {
+      if(!l.data || !setCompromissos.has(normalizarCompromisso(l.compromisso))) return;
+      const mes = l.data.slice(0, 7); // "AAAA-MM"
+      if(mes < "2026-01") return; // só desde janeiro/2026
+      if(!porMes[mes]) porMes[mes] = { totalAnimais:0, cargas:0, somaPeso:0, somaQtdPeso:0, somaArroba:0, somaQtdArroba:0 };
+      const m = porMes[mes];
+      const qtd = l.qtdAnimais || 0;
+      m.totalAnimais += qtd;
+      m.cargas += 1;
+      if(l.pesoCab){ m.somaPeso += l.pesoCab * qtd; m.somaQtdPeso += qtd; }
+      if(l.arrobaCab){ m.somaArroba += l.arrobaCab * qtd; m.somaQtdArroba += qtd; }
+    });
+
+    const mesesOrdenados = Object.keys(porMes).sort();
+    if(mesesOrdenados.length === 0) return "";
+
+    const MESES_NOME = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+    let totalGeralAnimais = 0, totalGeralCargas = 0, somaPesoGeral = 0, somaQtdPesoGeral = 0, somaArrobaGeral = 0, somaQtdArrobaGeral = 0;
+
+    const linhasHtml = mesesOrdenados.map(mes => {
+      const m = porMes[mes];
+      const [ano, mm] = mes.split("-");
+      const pesoMedio = m.somaQtdPeso > 0 ? (m.somaPeso / m.somaQtdPeso) : null;
+      const arrobaMedia = m.somaQtdArroba > 0 ? (m.somaArroba / m.somaQtdArroba) : null;
+
+      totalGeralAnimais += m.totalAnimais;
+      totalGeralCargas += m.cargas;
+      somaPesoGeral += m.somaPeso; somaQtdPesoGeral += m.somaQtdPeso;
+      somaArrobaGeral += m.somaArroba; somaQtdArrobaGeral += m.somaQtdArroba;
+
+      return `
+        <tr>
+          <td class="left">${MESES_NOME[Number(mm)-1]}/${ano}</td>
+          <td>${fmt(m.totalAnimais)}</td>
+          <td>${fmt(m.cargas)}</td>
+          <td>${pesoMedio === null ? "—" : fmtPeso(pesoMedio)}</td>
+          <td>${arrobaMedia === null ? "—" : arrobaMedia.toLocaleString("pt-BR",{maximumFractionDigits:2}) + " @"}</td>
+        </tr>`;
+    }).join("");
+
+    const pesoMedioGeral = somaQtdPesoGeral > 0 ? (somaPesoGeral / somaQtdPesoGeral) : null;
+    const arrobaMediaGeral = somaQtdArrobaGeral > 0 ? (somaArrobaGeral / somaQtdArrobaGeral) : null;
+
+    return `
+      <div class="chart-card">
+        <div class="chart-card-title">Fechamento mensal — desde janeiro/2026</div>
+        <table>
+          <thead>
+            <tr>
+              <th class="left">Mês</th>
+              <th>Total Animais</th>
+              <th>Nº Cargas</th>
+              <th>Peso Médio</th>
+              <th>@ Média</th>
+            </tr>
+          </thead>
+          <tbody>${linhasHtml}</tbody>
+          <tfoot>
+            <tr>
+              <td class="left">TOTAL GERAL</td>
+              <td>${fmt(totalGeralAnimais)}</td>
+              <td>${fmt(totalGeralCargas)}</td>
+              <td>${pesoMedioGeral === null ? "—" : fmtPeso(pesoMedioGeral)}</td>
+              <td>${arrobaMediaGeral === null ? "—" : arrobaMediaGeral.toLocaleString("pt-BR",{maximumFractionDigits:2}) + " @"}</td>
+            </tr>
+          </tfoot>
+        </table>
       </div>`;
   }
 
@@ -932,6 +1103,11 @@
     if(!dadosCompletos) return;
     const termo = document.getElementById("search").value.trim();
 
+    if(abaAtiva !== "entrada" && chartAcumuladoMensal){
+      chartAcumuladoMensal.destroy();
+      chartAcumuladoMensal = null;
+    }
+
     if(abaAtiva === "contratos"){
       document.getElementById("filtro-status").style.display = "none";
       document.getElementById("filtro-data-dia").style.display = "none";
@@ -993,7 +1169,11 @@
     const fornecedorFiltro = document.getElementById("filtro-fornecedor").value.trim();
     const compromissoFiltro = document.getElementById("filtro-compromisso").value.trim();
     const linhasFiltradas = ordenarLinhas(aplicarFiltro(bloco.linhas || [], termo, abaAtiva, status, fornecedorFiltro, compromissoFiltro));
-    document.getElementById("content").innerHTML = renderKpis(linhasFiltradas, bloco.dataReferencia) + renderTabela(linhasFiltradas, abaAtiva);
+    document.getElementById("content").innerHTML =
+      renderKpis(linhasFiltradas, bloco.dataReferencia) +
+      renderFechamentoMensal(linhasFiltradas.map(l => l.compromisso)) +
+      renderTabela(linhasFiltradas, abaAtiva);
+    desenharGraficoAcumuladoMensal(linhasFiltradas.map(l => l.compromisso));
   }
 
   async function adicionarContratoUI(){
