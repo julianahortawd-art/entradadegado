@@ -753,7 +753,7 @@
           <tbody>${linhasHtml}</tbody>
           <tfoot>
             <tr>
-              <td class="left">TOTAL GERAL</td>
+              <td>TOTAL GERAL</td>
               <td>${fmt(totalGeralAnimais)}</td>
               <td>${fmt(totalGeralCargas)}</td>
               <td>${pesoMedioGeral === null ? "—" : fmtPeso(pesoMedioGeral)}</td>
@@ -1794,6 +1794,7 @@
                 if(data.row.index === bodyMensal.length - 1){
                   data.cell.styles.fontStyle = 'bold';
                   data.cell.styles.fillColor = [247, 247, 244];
+                  if(data.column.index === 0) data.cell.styles.halign = 'center';
                 }
               }
             });
