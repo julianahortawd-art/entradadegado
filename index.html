@@ -120,6 +120,14 @@
     color:var(--text-dim); font-weight:700; margin-bottom:10px; text-align:center;
   }
   .chart-card-canvas-wrap{ position:relative; height:220px; }
+
+  .faixa-conexao{
+    max-width:820px; margin:0 auto 16px; padding:10px 18px; border-radius:var(--radius);
+    font-size:12.5px; text-align:center; font-weight:600;
+  }
+  .faixa-conexao.offline{
+    background:var(--amber-soft); color:var(--amber); border:1px solid var(--amber);
+  }
   .hero{ text-align:center; max-width:720px; margin:6px auto 26px; border-bottom:1.5px solid var(--text); padding-bottom:22px; }
   .hero-logo{ height:96px; width:auto; margin-bottom:16px; }
   .hero .eyebrow{ justify-content:center; }
@@ -1322,20 +1330,87 @@
     }
   }
 
+  const CACHE_KEY_DADOS = "painelContratos:ultimosDados";
+  const CACHE_KEY_DADOS_EM = "painelContratos:ultimosDadosEm";
+
+  function salvarDadosEmCache(dados){
+    try{
+      localStorage.setItem(CACHE_KEY_DADOS, JSON.stringify(dados));
+      localStorage.setItem(CACHE_KEY_DADOS_EM, new Date().toISOString());
+    }catch(e){
+      console.warn("Não foi possível salvar cache local:", e);
+    }
+  }
+
+  function lerDadosDoCache(){
+    try{
+      const bruto = localStorage.getItem(CACHE_KEY_DADOS);
+      if(!bruto) return null;
+      return { dados: JSON.parse(bruto), em: localStorage.getItem(CACHE_KEY_DADOS_EM) };
+    }catch(e){
+      return null;
+    }
+  }
+
+  function mostrarFaixaStatusConexao(modo, quando){
+    let faixa = document.getElementById("faixa-status-conexao");
+    if(!faixa){
+      faixa = document.createElement("div");
+      faixa.id = "faixa-status-conexao";
+      document.querySelector(".wrap").insertBefore(faixa, document.querySelector(".wrap").firstChild);
+    }
+    if(modo === "offline-cache"){
+      faixa.className = "faixa-conexao offline";
+      faixa.textContent = `⚠ Sem conexão — mostrando os últimos dados salvos neste aparelho (${quando ? new Date(quando).toLocaleString("pt-BR") : "data desconhecida"}). Assim que a internet voltar, atualiza sozinho.`;
+      faixa.style.display = "";
+    } else if(modo === "atualizado"){
+      faixa.style.display = "none";
+    }
+  }
+
   async function carregar(){
     try{
       const resp = await fetch(API_URL, { cache: "no-store" });
       if(!resp.ok) throw new Error("HTTP " + resp.status);
       dadosCompletos = await resp.json();
+      salvarDadosEmCache(dadosCompletos);
+      mostrarFaixaStatusConexao("atualizado");
       atualizarMeta();
       render();
     }catch(err){
-      document.getElementById("content").innerHTML = `
-        <div class="state error">
-          Não foi possível carregar os dados.
-          <code>${err.message}\n\nConfira se API_URL está preenchida com o link do Apps Script publicado (/exec) e se a implantação está com acesso "Qualquer pessoa".</code>
-        </div>`;
+      // Sem internet (ou API fora do ar): tenta usar a última cópia salva
+      // neste aparelho em vez de mostrar tela de erro.
+      const cache = lerDadosDoCache();
+      if(cache){
+        dadosCompletos = cache.dados;
+        mostrarFaixaStatusConexao("offline-cache", cache.em);
+        atualizarMeta();
+        render();
+      }else{
+        document.getElementById("content").innerHTML = `
+          <div class="state error">
+            Não foi possível carregar os dados.
+            <code>${err.message}\n\nConfira se API_URL está preenchida com o link do Apps Script publicado (/exec) e se a implantação está com acesso "Qualquer pessoa".</code>
+          </div>`;
+      }
     }
+  }
+
+  // Assim que a internet voltar, busca dados novos sozinho — sem precisar
+  // que a pessoa recarregue a página na mão.
+  window.addEventListener("online", () => {
+    carregar();
+  });
+
+  // Registra o Service Worker (permite abrir a TELA em si mesmo sem
+  // internet nenhuma; o arquivo sw.js precisa estar publicado ao lado
+  // deste index.html, no mesmo domínio/pasta).
+  if("serviceWorker" in navigator){
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch(err => {
+        console.warn("Service worker não registrado (offline do site pode não funcionar):", err);
+      });
+    });
   }
 
   document.querySelectorAll(".tab").forEach(btn => {
