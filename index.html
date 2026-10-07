@@ -408,6 +408,18 @@
         <option value="SEM_INFO">Sem info de contrato</option>
       </select>
       <input class="search" id="filtro-data-dia" type="date" style="min-width:160px; display:none;">
+      <select class="search" id="ordenar-por" style="min-width:230px; display:none;" title="Classificar tabela">
+        <option value="data-asc">Ordenar: data do compromisso (mais antigo)</option>
+        <option value="data-desc">Ordenar: data do compromisso (mais novo)</option>
+        <option value="compromisso-asc">Ordenar: Nº compromisso (crescente)</option>
+        <option value="compromisso-desc">Ordenar: Nº compromisso (decrescente)</option>
+        <option value="fornecedor-asc">Ordenar: fornecedor (A–Z)</option>
+        <option value="falta-desc">Ordenar: falta chegar (maior)</option>
+        <option value="pct-asc">Ordenar: % recebido (menor)</option>
+        <option value="pct-desc">Ordenar: % recebido (maior)</option>
+        <option value="contratado-desc">Ordenar: contratado (maior)</option>
+        <option value="acumulado-desc">Ordenar: recebido acumulado (maior)</option>
+      </select>
     </div>
     <div class="legend">
       <span><span class="dot" style="background:var(--green-accent)"></span>Completo</span>
@@ -787,6 +799,7 @@
       return `
         <tr class="${tipo === "entrada" ? "row-clicavel" : ""}" ${clique} title="${tipo === "entrada" ? "Clique para ver os lançamentos deste compromisso" : ""}">
           <td class="left">${chave}</td>
+          ${tipo === "entrada" ? `<td>${dataDoCompromisso(l.compromisso) ? fmtData(dataDoCompromisso(l.compromisso)) : "—"}</td>` : ""}
           <td class="fornecedor left" title="${origem||''}">${origem || "—"}</td>
           <td>${fmt(l.contratado)}</td>
           <td>${fmt(l.entradaNoDia)}</td>
@@ -806,6 +819,7 @@
       <table>
         <colgroup>
           <col class="col-chave">
+          ${tipo === "entrada" ? `<col class="col-num">` : ""}
           <col class="col-fornecedor">
           <col class="col-num">
           <col class="col-num">
@@ -818,6 +832,7 @@
         <thead>
           <tr>
             <th class="left">${chaveHeader}</th>
+            ${tipo === "entrada" ? `<th>Data do<br>compromisso</th>` : ""}
             <th class="left">${origemHeader}</th>
             <th>Nº Animais<br>Contratados</th>
             <th>Entrada<br>no dia</th>
@@ -831,7 +846,7 @@
         <tbody id="tbody">${linhasHtml}</tbody>
         <tfoot>
           <tr>
-            <td colspan="2" class="left">TOTAL — ${linhas.length} registro(s)</td>
+            <td colspan="${tipo === "entrada" ? 3 : 2}" class="left">TOTAL — ${linhas.length} registro(s)</td>
             <td>${fmt(totalContratado)}</td>
             <td>${fmt(totalDia)}</td>
             <td>${fmt(totalAcum)}</td>
@@ -841,12 +856,48 @@
       </table>`;
   }
 
-  function ordenarLinhas(linhas){
+  // Data do compromisso = data do contrato cadastrado (planilha do Ricardo).
+  // Se o mesmo compromisso tiver mais de um contrato (ou sufixos /1, /2),
+  // usa a data mais antiga. Sem contrato cadastrado => null.
+  function dataDoCompromisso(compromisso){
+    const alvo = normalizarCompromisso(compromisso);
+    let menor = null;
+    (dadosCompletos && dadosCompletos.contratos || []).forEach(c => {
+      if(normalizarCompromisso(c.compromisso) !== alvo) return;
+      const d = c.dataContrato;
+      if(d && /^\d{4}-\d{2}-\d{2}/.test(d) && (menor === null || d < menor)) menor = d;
+    });
+    return menor;
+  }
+
+  function ordenarLinhas(linhas, criterio){
+    criterio = criterio || (document.getElementById("ordenar-por") || {}).value || "data-asc";
+    const [campo, sentido] = criterio.split("-");
+    const dir = sentido === "desc" ? -1 : 1;
+    const numComp = l => { const n = Number(normalizarCompromisso(l.compromisso)); return isNaN(n) ? Infinity : n; };
+
+    // Valor de cada linha no critério escolhido; null = vai sempre pro fim.
+    const valor = l => {
+      switch(campo){
+        case "data": return dataDoCompromisso(l.compromisso);
+        case "compromisso": return numComp(l) === Infinity ? null : numComp(l);
+        case "fornecedor": return (l.fornecedor || "").toLowerCase() || null;
+        case "falta": return l.falta;
+        case "pct": return l.percentual;
+        case "contratado": return l.contratado;
+        case "acumulado": return l.acumulado;
+        default: return null;
+      }
+    };
+
     return [...linhas].sort((a,b) => {
-      const aCompleto = a.status === "COMPLETO" ? 0 : 1;
-      const bCompleto = b.status === "COMPLETO" ? 0 : 1;
-      if(aCompleto !== bCompleto) return aCompleto - bCompleto;
-      return (b.acumulado||0) - (a.acumulado||0);
+      const va = valor(a), vb = valor(b);
+      if(va === null && vb === null) return numComp(a) - numComp(b);
+      if(va === null) return 1;
+      if(vb === null) return -1;
+      if(va < vb) return -1 * dir;
+      if(va > vb) return 1 * dir;
+      return numComp(a) - numComp(b); // desempate: nº do compromisso
     });
   }
 
@@ -1151,6 +1202,7 @@
       document.getElementById("filtro-data-dia").style.display = "none";
       document.getElementById("filtro-fornecedor").style.display = "none";
       document.getElementById("filtro-compromisso").style.display = "none";
+      document.getElementById("ordenar-por").style.display = "none";
       document.querySelector(".legend").style.display = "none";
       document.getElementById("pdf-row").style.display = "none";
       let linhas = (dadosCompletos.contratos) || [];
@@ -1170,6 +1222,7 @@
       document.getElementById("filtro-data-dia").style.display = "";
       document.getElementById("filtro-fornecedor").style.display = "none";
       document.getElementById("filtro-compromisso").style.display = "none";
+      document.getElementById("ordenar-por").style.display = "none";
       document.querySelector(".legend").style.display = "none";
       const dataDia = document.getElementById("filtro-data-dia").value;
       let linhas = (dadosCompletos.entradaPorDia && dadosCompletos.entradaPorDia.linhas) || [];
@@ -1187,6 +1240,7 @@
       document.getElementById("filtro-data-dia").style.display = "none";
       document.getElementById("filtro-fornecedor").style.display = "none";
       document.getElementById("filtro-compromisso").style.display = "none";
+      document.getElementById("ordenar-por").style.display = "none";
       document.querySelector(".legend").style.display = "none";
       let linhas = (dadosCompletos.statusDesmama && dadosCompletos.statusDesmama.linhas) || [];
       if(termo){
@@ -1201,6 +1255,7 @@
     document.getElementById("filtro-data-dia").style.display = "none";
     document.getElementById("filtro-fornecedor").style.display = "";
     document.getElementById("filtro-compromisso").style.display = "";
+    document.getElementById("ordenar-por").style.display = "";
     document.querySelector(".legend").style.display = "";
     const bloco = dadosCompletos.entradaCompra;
     const status = document.getElementById("filtro-status").value;
@@ -1427,6 +1482,7 @@
   document.getElementById("filtro-data-dia").addEventListener("change", render);
   document.getElementById("filtro-fornecedor").addEventListener("input", render);
   document.getElementById("filtro-compromisso").addEventListener("input", render);
+  document.getElementById("ordenar-por").addEventListener("change", render);
 
   document.getElementById("link-upload-manual").addEventListener("click", (e) => {
     e.preventDefault();
@@ -1549,8 +1605,10 @@
     return linhas.map(l => {
       const chave = tipo === "entrada" ? l.compromisso : l.chave;
       const origem = tipo === "entrada" ? l.fornecedor : l.origem;
+      const dataComp = tipo === "entrada" ? dataDoCompromisso(l.compromisso) : null;
       const row = [
         String(chave),
+        ...(tipo === "entrada" ? [dataComp ? fmtData(dataComp) : "—"] : []),
         origem || "—",
         fmt(l.contratado),
         fmt(l.entradaNoDia),
@@ -1886,7 +1944,7 @@
 
         const chaveHeader = bloco.tipo === "entrada" ? "Nº Compromisso" : "Contrato / Chave";
         const origemHeader = bloco.tipo === "entrada" ? "Fornecedor" : "Origem";
-        const head = [[chaveHeader, origemHeader, "Nº Animais Contratados", "Entrada no dia", "Recebido acum.", "Falta chegar", "% Recebido"]];
+        const head = [[chaveHeader, ...(bloco.tipo === "entrada" ? ["Data do compromisso"] : []), origemHeader, "Nº Animais Contratados", "Entrada no dia", "Recebido acum.", "Falta chegar", "% Recebido"]];
         if(mostrarPeso) head[0].push("Peso médio");
         head[0].push("Status");
 
@@ -1895,7 +1953,7 @@
         const totalContratado = linhasOrdenadas.reduce((s,l) => s + (l.contratado||0), 0);
         const totalDia = linhasOrdenadas.reduce((s,l) => s + (l.entradaNoDia||0), 0);
         const totalAcum = linhasOrdenadas.reduce((s,l) => s + (l.acumulado||0), 0);
-        const totalRow = ["TOTAL — " + linhasOrdenadas.length + " registro(s)", "", fmt(totalContratado), fmt(totalDia), fmt(totalAcum), "", ""];
+        const totalRow = ["TOTAL — " + linhasOrdenadas.length + " registro(s)", ...(bloco.tipo === "entrada" ? [""] : []), "", fmt(totalContratado), fmt(totalDia), fmt(totalAcum), "", ""];
         if(mostrarPeso) totalRow.push("");
         totalRow.push("");
         body.push(totalRow);
@@ -1906,7 +1964,7 @@
           margin: { top: headerH + 4, left: margin, right: margin, bottom: 10 },
           theme: 'grid',
           styles: { fontSize: 8, textColor: [40,40,40], cellPadding: 2, halign: 'center' },
-          columnStyles: { 0: { halign:'left' }, 1: { halign:'left' } },
+          columnStyles: bloco.tipo === "entrada" ? { 0: { halign:'left' }, 2: { halign:'left' } } : { 0: { halign:'left' }, 1: { halign:'left' } },
           headStyles: { fillColor: [247,245,236], textColor: [20,20,15], fontStyle:'bold', fontSize: 7.5 },
           alternateRowStyles: { fillColor: [246,247,244] },
           didDrawPage: () => desenharCabecalhoRodapePdf(doc, W, H, headerH),
