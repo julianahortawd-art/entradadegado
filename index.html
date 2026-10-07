@@ -47,7 +47,7 @@
   ::selection{ background:var(--gold); color:#fff; }
   a{ color:inherit; text-decoration:none; }
 
-  .wrap{ max-width:1180px; margin:0 auto; padding:28px 20px 80px; }
+  .wrap{ max-width:1400px; margin:0 auto; padding:28px 20px 80px; }
 
   header.top{
     display:flex; align-items:flex-start; justify-content:space-between;
@@ -285,6 +285,10 @@
   tbody tr:hover{ background:#F3F3EF; }
   td.fornecedor{ color:var(--text-dim); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; }
 
+  th.sortable{ cursor:pointer; user-select:none; transition:color .12s; }
+  th.sortable:hover{ color:var(--gold); }
+  .seta-ord{ margin-left:4px; color:var(--gold); font-size:.7em; }
+
   td.ocorrencia-cell{ cursor:pointer; max-width:220px; }
   td.ocorrencia-cell.expandida{
     white-space:normal !important; overflow:visible !important; text-overflow:clip !important;
@@ -409,7 +413,8 @@
       </select>
       <input class="search" id="filtro-data-dia" type="date" style="min-width:160px; display:none;">
       <select class="search" id="ordenar-por" style="min-width:230px; display:none;" title="Classificar tabela">
-        <option value="data-asc">Ordenar: data do compromisso (mais antigo)</option>
+        <option value="" disabled hidden>Ordenar: pela coluna clicada</option>
+        <option value="data-asc" selected>Ordenar: data do compromisso (mais antigo)</option>
         <option value="data-desc">Ordenar: data do compromisso (mais novo)</option>
         <option value="compromisso-asc">Ordenar: Nº compromisso (crescente)</option>
         <option value="compromisso-desc">Ordenar: Nº compromisso (decrescente)</option>
@@ -815,6 +820,11 @@
     const totalDia = linhas.reduce((s,l) => s + (l.entradaNoDia||0), 0);
     const totalAcum = linhas.reduce((s,l) => s + (l.acumulado||0), 0);
 
+    // Título de coluna: clicável (ordena) só na aba de acompanhamento.
+    const thOrd = (campo, rotulo, cls = "") => tipo === "entrada"
+      ? `<th class="${cls} sortable" onclick="ordenarPorColuna('${campo}')" title="Clique para ordenar">${rotulo}${setaOrdenacao(campo)}</th>`
+      : `<th class="${cls}">${rotulo}</th>`;
+
     return `
       <table>
         <colgroup>
@@ -831,16 +841,16 @@
         </colgroup>
         <thead>
           <tr>
-            <th class="left">${chaveHeader}</th>
-            ${tipo === "entrada" ? `<th>Data do<br>compromisso</th>` : ""}
-            <th class="left">${origemHeader}</th>
-            <th>Nº Animais<br>Contratados</th>
-            <th>Entrada<br>no dia</th>
-            <th>Recebido<br>acum.</th>
-            <th>Falta<br>chegar</th>
-            <th>% Recebido</th>
-            ${mostrarPeso ? `<th>Peso<br>médio</th>` : ""}
-            <th>Status</th>
+            ${thOrd("compromisso", chaveHeader, "left")}
+            ${tipo === "entrada" ? thOrd("data", "Data do<br>compromisso") : ""}
+            ${thOrd("fornecedor", origemHeader, "left")}
+            ${thOrd("contratado", "Nº Animais<br>Contratados")}
+            ${thOrd("entrada", "Entrada<br>no dia")}
+            ${thOrd("acumulado", "Recebido<br>acum.")}
+            ${thOrd("falta", "Falta<br>chegar")}
+            ${thOrd("pct", "% Recebido")}
+            ${mostrarPeso ? thOrd("peso", "Peso<br>médio") : ""}
+            ${thOrd("status", "Status")}
           </tr>
         </thead>
         <tbody id="tbody">${linhasHtml}</tbody>
@@ -870,8 +880,31 @@
     return menor;
   }
 
+  let criterioAtual = "data-asc";
+
+  // Colunas de quantidade começam do maior pro menor; as demais, do menor/A–Z.
+  const COLUNAS_DESC_PRIMEIRO = ["contratado","entrada","acumulado","falta","peso"];
+
+  function ordenarPorColuna(campo){
+    const [campoAtual, sentidoAtual] = criterioAtual.split("-");
+    if(campoAtual === campo){
+      criterioAtual = `${campo}-${sentidoAtual === "asc" ? "desc" : "asc"}`;
+    }else{
+      criterioAtual = `${campo}-${COLUNAS_DESC_PRIMEIRO.includes(campo) ? "desc" : "asc"}`;
+    }
+    const sel = document.getElementById("ordenar-por");
+    const existe = [...sel.options].some(o => o.value === criterioAtual);
+    sel.value = existe ? criterioAtual : "";
+    render();
+  }
+
+  function setaOrdenacao(campo){
+    const [campoAtual, sentido] = criterioAtual.split("-");
+    return campoAtual === campo ? `<span class="seta-ord">${sentido === "asc" ? "▲" : "▼"}</span>` : "";
+  }
+
   function ordenarLinhas(linhas, criterio){
-    criterio = criterio || (document.getElementById("ordenar-por") || {}).value || "data-asc";
+    criterio = criterio || criterioAtual || "data-asc";
     const [campo, sentido] = criterio.split("-");
     const dir = sentido === "desc" ? -1 : 1;
     const numComp = l => { const n = Number(normalizarCompromisso(l.compromisso)); return isNaN(n) ? Infinity : n; };
@@ -885,6 +918,9 @@
         case "falta": return l.falta;
         case "pct": return l.percentual;
         case "contratado": return l.contratado;
+        case "entrada": return l.entradaNoDia;
+        case "peso": return l.pesoMedio;
+        case "status": return ({COMPLETO:0, EM_ANDAMENTO:1, NAO_INICIADO:2, SEM_INFO:3})[l.status] ?? 9;
         case "acumulado": return l.acumulado;
         default: return null;
       }
@@ -1482,7 +1518,10 @@
   document.getElementById("filtro-data-dia").addEventListener("change", render);
   document.getElementById("filtro-fornecedor").addEventListener("input", render);
   document.getElementById("filtro-compromisso").addEventListener("input", render);
-  document.getElementById("ordenar-por").addEventListener("change", render);
+  document.getElementById("ordenar-por").addEventListener("change", (e) => {
+    if(e.target.value) criterioAtual = e.target.value;
+    render();
+  });
 
   document.getElementById("link-upload-manual").addEventListener("click", (e) => {
     e.preventDefault();
