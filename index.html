@@ -125,6 +125,9 @@
     max-width:820px; margin:0 auto 16px; padding:10px 18px; border-radius:var(--radius);
     font-size:12.5px; text-align:center; font-weight:600;
   }
+  .faixa-conexao.erro{
+    background:var(--rust-soft); color:var(--rust); border:1px solid var(--rust); text-align:left;
+  }
   .faixa-conexao.offline{
     background:var(--amber-soft); color:var(--amber); border:1px solid var(--amber);
   }
@@ -389,6 +392,11 @@
     <div class="info-item">
       <span class="info-label">Atualizado em</span>
       <span class="info-value" id="ref-gerado">—</span>
+    </div>
+    <div class="info-divider"></div>
+    <div class="info-item">
+      <span class="info-label">Contratos sincronizados</span>
+      <span class="info-value" id="ref-sinc">—</span>
     </div>
   </div>
 
@@ -1403,7 +1411,36 @@
     }
   }
 
+  // Mostra quando os contratos foram sincronizados com a planilha do Ricardo
+  // e, se a última tentativa falhou, uma faixa vermelha explicando o motivo.
+  function atualizarStatusSincContratos(){
+    const st = dadosCompletos.sincronizacaoContratos || {};
+    const fmtHora = iso => iso ? new Date(iso).toLocaleString("pt-BR") : null;
+    const el = document.getElementById("ref-sinc");
+    const ok = fmtHora(st.sucessoEm || dadosCompletos.ultimaSincronizacaoContratos);
+    el.textContent = st.erro ? `falhou ⚠ (última ok: ${ok || "nunca"})` : (ok || "ainda não rodou");
+    el.title = [
+      st.aba ? `Aba lida: ${st.aba}` : null,
+      st.linhas != null ? `${st.linhas} compromissos` : null,
+      st.colunas ? `Colunas: compromisso ${st.colunas.compromisso}, data ${st.colunas.data}, vendedor ${st.colunas.produtor}, cidade ${st.colunas.cidade}, quantidade ${st.colunas.quantidade}` : null,
+      ...(st.avisos || []).map(a => "Aviso: " + a),
+    ].filter(Boolean).join("\n");
+
+    let faixa = document.getElementById("faixa-sinc-contratos");
+    if(!st.erro){ if(faixa) faixa.style.display = "none"; return; }
+    if(!faixa){
+      faixa = document.createElement("div");
+      faixa.id = "faixa-sinc-contratos";
+      const wrap = document.querySelector(".wrap");
+      wrap.insertBefore(faixa, document.querySelector(".info-bar"));
+    }
+    faixa.className = "faixa-conexao erro";
+    faixa.style.display = "";
+    faixa.textContent = `⚠ A sincronização com a planilha do Ricardo falhou (${fmtHora(st.erroEm) || "horário desconhecido"}). Contratos novos podem não estar aparecendo — os números abaixo são da última sincronização bem-sucedida (${ok || "desconhecida"}). Motivo: ${st.erro}`;
+  }
+
   function atualizarMeta(){
+    atualizarStatusSincContratos();
     document.getElementById("ref-ec").textContent = fmtData(dadosCompletos.entradaCompra.dataReferencia);
     const gerado = new Date(dadosCompletos.geradoEm);
     document.getElementById("ref-gerado").textContent = gerado.toLocaleString("pt-BR");
